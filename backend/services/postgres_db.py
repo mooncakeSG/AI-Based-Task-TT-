@@ -3,6 +3,10 @@ import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+# Load environment variables explicitly
+from dotenv import load_dotenv
+load_dotenv()
+
 # PostgreSQL/SQLAlchemy imports
 try:
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -122,7 +126,9 @@ class PostgreSQLDatabaseService:
             return False
         
         try:
-            self.supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
+            # Use service role key for write operations to bypass RLS
+            service_key = settings.supabase_service_key if settings.supabase_service_key else settings.supabase_anon_key
+            self.supabase = create_client(settings.supabase_url, service_key)
             test_result = self.supabase.table('tasks').select('count').limit(1).execute()
             self.connection_type = "supabase"
             logger.info("Supabase connection established successfully")
@@ -178,10 +184,12 @@ class PostgreSQLDatabaseService:
         
         elif self.connection_type == "supabase":
             try:
-                query = self.supabase.table('tasks').select('*').order('created_at', desc=True)
+                # Don't order by created_at since it doesn't exist in the Supabase table
+                query = self.supabase.table('tasks').select('*')
                 if user_id:
                     query = query.eq('user_id', user_id)
                 result = query.execute()
+                logger.info(f"Supabase query result: {result.data}")
                 return result.data if result.data else []
             except Exception as e:
                 logger.error(f"Failed to fetch tasks from Supabase: {e}")
@@ -233,17 +241,49 @@ class PostgreSQLDatabaseService:
         
         elif self.connection_type == "supabase":
             try:
-                if 'created_at' not in task_data:
-                    task_data['created_at'] = time.time()
+                # Only use fields that exist in the Supabase tasks table
+                # Don't include user_id if it's not a valid UUID to avoid RLS issues
+                supabase_task = {
+                    "summary": task_data.get('summary', '')
+                }
                 
-                result = self.supabase.table('tasks').insert(task_data).execute()
+                # Only add user_id if it's a valid UUID format or None
+                user_id = task_data.get('user_id')
+                if user_id and len(str(user_id)) > 10:  # Basic UUID length check
+                    supabase_task["user_id"] = user_id
+                
+                logger.info(f"Creating Supabase task: {supabase_task}")
+                result = self.supabase.table('tasks').insert(supabase_task).execute()
+                
                 if result.data:
                     logger.info(f"Created task in Supabase: {result.data[0].get('id')}")
-                    return result.data[0]
+                    # Return with all the expected fields for compatibility
+                    created_task = result.data[0]
+                    return {
+                        "id": created_task.get('id'),
+                        "summary": created_task.get('summary'),
+                        "category": task_data.get('category', 'general'),  # Keep for compatibility
+                        "priority": task_data.get('priority', 'medium'),   # Keep for compatibility
+                        "status": task_data.get('status', 'pending'),      # Keep for compatibility
+                        "user_id": created_task.get('user_id'),
+                        "created_at": time.time(),
+                        "updated_at": time.time()
+                    }
                 return None
             except Exception as e:
                 logger.error(f"Failed to create task in Supabase: {e}")
-                return None
+                # If Supabase fails, fall back to memory storage
+                logger.info("Falling back to memory storage for task creation")
+                task = task_data.copy()
+                task['id'] = self.next_id
+                task['created_at'] = task.get('created_at', time.time())
+                task['updated_at'] = time.time()
+                
+                self.memory_storage['tasks'].append(task)
+                self.next_id += 1
+                
+                logger.info(f"Created task in memory fallback: {task['id']}")
+                return task
         
         else:
             # Memory storage

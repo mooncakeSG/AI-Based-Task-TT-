@@ -32,12 +32,16 @@ class ChatResponse(BaseModel):
 class TaskModel(BaseModel):
     id: Optional[int] = None
     summary: str
+    description: Optional[str] = None
     category: Optional[str] = "general"
     priority: Optional[str] = "medium"
     status: Optional[str] = "pending"
     user_id: Optional[str] = None
-    created_at: Optional[float] = None
-    updated_at: Optional[float] = None
+    due_date: Optional[str] = None
+    tags: Optional[List[str]] = []
+    metadata: Optional[Dict[str, Any]] = {}
+    created_at: Optional[str] = None  # ISO timestamp from Supabase
+    updated_at: Optional[str] = None  # ISO timestamp from Supabase
 
 class TasksResponse(BaseModel):
     tasks: List[TaskModel]
@@ -85,9 +89,33 @@ async def get_tasks(user_id: Optional[str] = None):
         
         # Use Supabase database service
         tasks_data = await database_service.get_tasks(user_id)
+        logger.info(f"Retrieved {len(tasks_data)} tasks from database")
         
-        # Convert to TaskModel objects
-        tasks = [TaskModel(**task) for task in tasks_data]
+        # Convert to TaskModel objects safely
+        tasks = []
+        for task_data in tasks_data:
+            try:
+                # Create TaskModel with safe field mapping
+                task = TaskModel(
+                    id=task_data.get('id'),
+                    summary=task_data.get('summary', 'Untitled Task'),
+                    description=task_data.get('description'),
+                    category=task_data.get('category', 'general'),
+                    priority=task_data.get('priority', 'medium'),
+                    status=task_data.get('status', 'pending'),
+                    user_id=task_data.get('user_id'),
+                    due_date=task_data.get('due_date'),
+                    tags=task_data.get('tags', []),
+                    metadata=task_data.get('metadata', {}),
+                    created_at=task_data.get('created_at'),
+                    updated_at=task_data.get('updated_at')
+                )
+                tasks.append(task)
+            except Exception as task_error:
+                logger.warning(f"Failed to convert task {task_data.get('id')}: {str(task_error)}")
+                continue
+        
+        logger.info(f"Successfully converted {len(tasks)} tasks")
         
         return TasksResponse(
             tasks=tasks,
@@ -309,25 +337,37 @@ async def chat_endpoint(request: ChatRequest):
         except Exception as chat_error:
             logger.warning(f"Failed to save chat message: {str(chat_error)}")
         
-        # Auto-create task if the message seems task-related
-        message_lower = request.message.lower()
-        task_keywords = ['task', 'todo', 'remind', 'schedule', 'plan', 'organize', 'deadline', 'project']
+        # Save extracted tasks from AI response
+        extracted_tasks = ai_result.get("tasks", [])
+        saved_tasks = []
         
-        if any(keyword in message_lower for keyword in task_keywords):
-            try:
-                # Create a simple task from the message
-                task_data = {
-                    "summary": request.message[:100] + "..." if len(request.message) > 100 else request.message,
-                    "category": "auto-generated",
-                    "priority": "medium",
-                    "status": "pending",
-                    "user_id": request.user_id
-                }
-                created_task = await database_service.create_task(task_data)
-                if created_task:
-                    logger.info(f"Auto-created task from chat message: {created_task.get('id')}")
-            except Exception as task_error:
-                logger.warning(f"Failed to auto-create task: {str(task_error)}")
+        if extracted_tasks:
+            logger.info(f"Found {len(extracted_tasks)} tasks to save")
+            
+            for task in extracted_tasks:
+                try:
+                    # Prepare task data for database
+                    task_data = {
+                        "summary": task.get("summary", task.get("title", "Untitled task")),
+                        "category": task.get("category", "general"),
+                        "priority": task.get("priority", "medium"),
+                        "status": task.get("status", "pending"),
+                        "user_id": request.user_id
+                    }
+                    
+                    # Save task to database
+                    created_task = await database_service.create_task(task_data)
+                    if created_task:
+                        saved_tasks.append(created_task)
+                        logger.info(f"Saved task: {created_task.get('id')} - {task_data['summary'][:50]}...")
+                    else:
+                        logger.warning(f"Failed to save task: {task_data['summary'][:50]}...")
+                        
+                except Exception as task_error:
+                    logger.error(f"Error saving task: {str(task_error)}")
+                    continue
+            
+            logger.info(f"Successfully saved {len(saved_tasks)} out of {len(extracted_tasks)} tasks")
         
         # Log response time
         total_time = time.time() - start_time
@@ -340,7 +380,7 @@ async def chat_endpoint(request: ChatRequest):
             tokens_used=ai_result["tokens_used"],
             status=ai_result["status"],
             timestamp=time.time(),
-            tasks=ai_result.get("tasks", [])
+            tasks=saved_tasks  # Return the saved tasks instead of extracted tasks
         )
         
     except HTTPException:
