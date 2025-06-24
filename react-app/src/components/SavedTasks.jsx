@@ -50,6 +50,60 @@ const SavedTasks = ({ className = "" }) => {
     }
   };
 
+  const deleteTask = async (taskId) => {
+    if (!window.confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`http://localhost:8000/api/v1/tasks/${taskId}`, {
+        timeout: 10000,
+      });
+      
+      // Remove task from local state
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+      toast.success('Task deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete task:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to delete task';
+      toast.error(errorMessage);
+    }
+  };
+
+  const toggleTaskStatus = async (taskId, currentStatus) => {
+    // Define status cycle: pending -> in_progress -> completed -> pending
+    const statusCycle = {
+      'pending': 'in_progress',
+      'in_progress': 'completed', 
+      'completed': 'pending'
+    };
+    
+    const newStatus = statusCycle[currentStatus] || 'pending';
+    
+    try {
+      await axios.put(`http://localhost:8000/api/v1/tasks/${taskId}`, {
+        status: newStatus
+      }, {
+        timeout: 10000,
+      });
+      
+      // Update task in local state
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskId 
+            ? { ...task, status: newStatus }
+            : task
+        )
+      );
+      
+      toast.success(`Task status updated to ${newStatus.replace('_', ' ')}`);
+    } catch (error) {
+      console.error('Failed to update task status:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to update task status';
+      toast.error(errorMessage);
+    }
+  };
+
   useEffect(() => {
     fetchTasks();
   }, []);
@@ -111,23 +165,41 @@ const SavedTasks = ({ className = "" }) => {
                 Task #{index + 1}
               </h3>
               <span className="text-sm text-gray-500">
-                {formatDate(task.timestamp)}
+                {formatDate(task.created_at || task.timestamp)}
               </span>
             </div>
           </div>
           
-          {task.status && (
-            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
-              task.status === 'completed' 
-                ? 'bg-green-100/80 text-green-800'
-                : task.status === 'in_progress'
-                ? 'bg-yellow-100/80 text-yellow-800'
-                : 'bg-gray-100/80 text-gray-800'
-            }`}>
-              <StatusIcon className="w-3 h-3" />
-              {task.status.replace('_', ' ')}
-            </span>
-          )}
+          <div className="flex items-center space-x-2">
+            {task.status && (
+              <motion.button
+                onClick={() => toggleTaskStatus(task.id, task.status)}
+                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm cursor-pointer hover:shadow-md transition-all duration-200 ${
+                  task.status === 'completed' 
+                    ? 'bg-green-100/80 text-green-800 hover:bg-green-200/80'
+                    : task.status === 'in_progress'
+                    ? 'bg-yellow-100/80 text-yellow-800 hover:bg-yellow-200/80'
+                    : 'bg-gray-100/80 text-gray-800 hover:bg-gray-200/80'
+                }`}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Click to change status"
+              >
+                <StatusIcon className="w-3 h-3" />
+                {task.status.replace('_', ' ')}
+              </motion.button>
+            )}
+            
+            <motion.button
+              onClick={() => deleteTask(task.id)}
+              className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50/80 rounded-lg transition-all duration-200"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              title="Delete task"
+            >
+              <Trash2 className="w-4 h-4" />
+            </motion.button>
+          </div>
         </div>
         
         <div className="space-y-4">

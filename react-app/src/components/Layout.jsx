@@ -48,10 +48,10 @@ const Layout = ({ children, currentPage, onNavigate }) => {
             <div className="flex flex-col md:flex-row justify-between items-center space-y-3 md:space-y-0">
               <div className="text-center md:text-left">
                 <p className="text-sm text-gray-600 font-medium">
-                  © 2024 IntelliAssist.AI
+                  © 2025 IntelliAssist.AI
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Powered by React, Tailwind CSS & AI
+                  Created by Tech Titanians | Powered by React, Tailwind CSS & AI
                 </p>
               </div>
               

@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload as UploadIcon, FileText, Image, Music, File, CheckCircle, Clock, AlertCircle, Trash2, Eye } from 'lucide-react';
+import { Upload as UploadIcon, FileText, Image, Music, File, CheckCircle, Clock, AlertCircle, Trash2, Eye, Copy, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import UploadBox from '../components/UploadBox';
+import AIResponseDisplay from '../components/AIResponseDisplay';
 import { animations } from '../styles/design-system';
+import toast from 'react-hot-toast';
 
-const Upload = () => {
-  const [uploadHistory, setUploadHistory] = useState([
+const Upload = ({ onNavigate }) => {
+  // Sample/default data
+  const defaultHistory = [
     {
       id: 1,
       filename: 'project-presentation.pdf',
@@ -13,7 +16,8 @@ const Upload = () => {
       type: 'application/pdf',
       uploadTime: new Date(Date.now() - 2 * 60 * 60 * 1000),
       status: 'completed',
-      analysis: 'Document contains 15 slides about AI project roadmap with timeline and budget analysis.'
+      analysis: 'Document contains 15 slides about AI project roadmap with timeline and budget analysis.',
+      isSample: true
     },
     {
       id: 2,
@@ -22,7 +26,8 @@ const Upload = () => {
       type: 'audio/mp3',
       uploadTime: new Date(Date.now() - 5 * 60 * 60 * 1000),
       status: 'completed',
-      analysis: 'Transcribed 45-minute meeting discussing Q4 objectives and team assignments.'
+      analysis: 'Transcribed 45-minute meeting discussing Q4 objectives and team assignments.',
+      isSample: true
     },
     {
       id: 3,
@@ -31,9 +36,46 @@ const Upload = () => {
       type: 'image/png',
       uploadTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
       status: 'processing',
-      analysis: null
+      analysis: null,
+      isSample: true
     }
-  ]);
+  ];
+
+  // Load upload history from localStorage or use default
+  const loadUploadHistory = () => {
+    try {
+      const saved = localStorage.getItem('uploadHistory');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Convert uploadTime strings back to Date objects
+        return parsed.map(item => ({
+          ...item,
+          uploadTime: new Date(item.uploadTime)
+        }));
+      }
+      return defaultHistory;
+    } catch (error) {
+      console.error('Error loading upload history:', error);
+      return defaultHistory;
+    }
+  };
+
+  // Save upload history to localStorage
+  const saveUploadHistory = (history) => {
+    try {
+      localStorage.setItem('uploadHistory', JSON.stringify(history));
+    } catch (error) {
+      console.error('Error saving upload history:', error);
+    }
+  };
+
+  const [uploadHistory, setUploadHistory] = useState(loadUploadHistory);
+  const [expandedFiles, setExpandedFiles] = useState(new Set());
+
+  // Save to localStorage whenever uploadHistory changes
+  useEffect(() => {
+    saveUploadHistory(uploadHistory);
+  }, [uploadHistory]);
 
   const handleUploadComplete = (uploadMessage, file) => {
     const newUpload = {
@@ -43,7 +85,11 @@ const Upload = () => {
       type: file.type,
       uploadTime: new Date(),
       status: 'completed',
-      analysis: uploadMessage.message
+      analysis: uploadMessage.message,
+      suggestions: uploadMessage.suggestions || [],
+      tasks: uploadMessage.tasks || [],
+      metadata: uploadMessage.metadata || {},
+      isSample: false // Mark as real upload
     };
     
     setUploadHistory(prev => [newUpload, ...prev]);
@@ -51,8 +97,38 @@ const Upload = () => {
 
   const clearHistory = () => {
     if (window.confirm('Are you sure you want to clear all upload history?')) {
-      setUploadHistory([]);
+      setUploadHistory(defaultHistory); // Reset to default samples
+      localStorage.removeItem('uploadHistory');
     }
+  };
+
+  const clearAllIncludingSamples = () => {
+    if (window.confirm('Are you sure you want to clear ALL history including samples?')) {
+      setUploadHistory([]);
+      localStorage.removeItem('uploadHistory');
+    }
+  };
+
+  const toggleExpanded = (fileId) => {
+    setExpandedFiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fileId)) {
+        newSet.delete(fileId);
+      } else {
+        newSet.add(fileId);
+      }
+      return newSet;
+    });
+  };
+
+  const copyFilename = (filename) => {
+    navigator.clipboard.writeText(filename);
+    toast.success(`Copied "${filename}" to clipboard`);
+  };
+
+  const reAnalyzeFile = async (upload) => {
+    toast.success(`Re-analyzing "${upload.filename}"...`);
+    // Here you could implement re-upload/re-analysis functionality
   };
 
   const formatFileSize = (bytes) => {
@@ -101,17 +177,26 @@ const Upload = () => {
     {
       icon: Image,
       title: 'Image Analysis',
-      description: 'Upload charts, diagrams, or photos for detailed AI analysis and text extraction.'
+      description: 'Upload charts, diagrams, screenshots, or photos for detailed AI analysis and text extraction. Best results with clear, high-resolution images.',
+      examples: ['Meeting whiteboards', 'Data charts', 'Document photos', 'Planning diagrams']
     },
     {
       icon: Music,
       title: 'Audio Transcription',
-      description: 'Convert speech to text from meetings, interviews, or voice recordings.'
+      description: 'Convert speech to text from meetings, interviews, or voice recordings. AI will extract action items and key insights.',
+      examples: ['Meeting recordings', 'Voice memos', 'Interviews', 'Lecture notes']
     },
     {
       icon: File,
       title: 'Document Processing',
-      description: 'Extract insights from PDFs, Word documents, and text files.'
+      description: 'Extract insights from PDFs, Word documents, and text files. AI analyzes content for tasks and recommendations.',
+      examples: ['Project reports', 'Meeting minutes', 'Research papers', 'Planning docs']
+    },
+    {
+      icon: FileText,
+      title: 'Smart Analysis',
+      description: 'AI automatically detects content type and provides contextual suggestions for task management and productivity.',
+      examples: ['Task extraction', 'Priority detection', 'Deadline identification', 'Action planning']
     }
   ];
 
@@ -165,7 +250,7 @@ const Upload = () => {
           <p className="text-gray-600">Discover the different types of files our AI can analyze for you.</p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 gap-6">
           {tips.map((tip, index) => (
             <motion.div
               key={index}
@@ -179,7 +264,22 @@ const Upload = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">{tip.title}</h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">{tip.description}</p>
+                  <p className="text-gray-600 text-sm leading-relaxed mb-3">{tip.description}</p>
+                  {tip.examples && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Examples:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {tip.examples.map((example, exampleIndex) => (
+                          <span
+                            key={exampleIndex}
+                            className="inline-block px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-md border border-blue-200/50"
+                          >
+                            {example}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -203,15 +303,30 @@ const Upload = () => {
             <p className="text-gray-600">Your recent file uploads and analysis results.</p>
           </div>
           {uploadHistory.length > 0 && (
-            <motion.button
-              onClick={clearHistory}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50/80 rounded-xl transition-all duration-200 border border-red-200/60 backdrop-blur-sm"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Trash2 className="w-4 h-4" />
-              Clear History
-            </motion.button>
+            <div className="flex items-center gap-2">
+              {uploadHistory.some(item => !item.isSample) && (
+                <motion.button
+                  onClick={clearHistory}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50/80 rounded-xl transition-all duration-200 border border-orange-200/60 backdrop-blur-sm"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  title="Clear your uploads but keep samples"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Reset
+                </motion.button>
+              )}
+              <motion.button
+                onClick={clearAllIncludingSamples}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50/80 rounded-xl transition-all duration-200 border border-red-200/60 backdrop-blur-sm"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                title="Clear all history including samples"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All
+              </motion.button>
+            </div>
           )}
         </motion.div>
 
@@ -237,6 +352,7 @@ const Upload = () => {
               {uploadHistory.map((upload, index) => {
                 const FileIcon = getFileIcon(upload.type);
                 const StatusIcon = getStatusIcon(upload.status);
+                const isExpanded = expandedFiles.has(upload.id);
                 
                 return (
                   <motion.div
@@ -252,36 +368,100 @@ const Upload = () => {
                       
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900 truncate">{upload.filename}</h3>
-                            <div className="flex items-center space-x-4 text-sm text-gray-500">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <h3 
+                                className="text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                                onClick={() => copyFilename(upload.filename)}
+                                title="Click to copy filename"
+                              >
+                                {upload.filename}
+                              </h3>
+                              {upload.isSample && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100/80 text-gray-600 border border-gray-200/60">
+                                  Sample
+                                </span>
+                              )}
+                              <motion.button
+                                onClick={() => copyFilename(upload.filename)}
+                                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50/80 rounded transition-all"
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                title="Copy filename"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </motion.button>
+                            </div>
+                            <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
                               <span>{formatFileSize(upload.size)}</span>
                               <span>{formatTimeAgo(upload.uploadTime)}</span>
                             </div>
                           </div>
-                          <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
-                            upload.status === 'completed' 
-                              ? 'bg-green-100/80 text-green-800'
-                              : upload.status === 'processing'
-                              ? 'bg-yellow-100/80 text-yellow-800'
-                              : 'bg-red-100/80 text-red-800'
-                          }`}>
-                            <StatusIcon className="w-3 h-3" />
-                            {upload.status}
+                          
+                          <div className="flex items-center gap-2">
+                            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
+                              upload.status === 'completed' 
+                                ? 'bg-green-100/80 text-green-800'
+                                : upload.status === 'processing'
+                                ? 'bg-yellow-100/80 text-yellow-800'
+                                : 'bg-red-100/80 text-red-800'
+                            }`}>
+                              <StatusIcon className="w-3 h-3" />
+                              {upload.status}
+                            </div>
+                            
+                            {upload.analysis && (
+                              <motion.button
+                                onClick={() => toggleExpanded(upload.id)}
+                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50/80 rounded-lg transition-all"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                title={isExpanded ? "Collapse details" : "Expand details"}
+                              >
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </motion.button>
+                            )}
                           </div>
                         </div>
                         
-                        {upload.analysis && (
-                          <div className="bg-gray-50/80 backdrop-blur-sm rounded-xl p-4 mt-3">
-                            <div className="flex items-start gap-2">
-                              <Eye className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
-                              <div>
-                                <p className="text-sm font-medium text-gray-900 mb-1">AI Analysis</p>
-                                <p className="text-sm text-gray-700 leading-relaxed">{upload.analysis}</p>
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <motion.button
+                            onClick={() => reAnalyzeFile(upload)}
+                            className="flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50/80 rounded-lg transition-all border border-blue-200/60"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Re-analyze
+                          </motion.button>
+                        </div>
+                        
+                        <AnimatePresence>
+                          {upload.analysis && isExpanded && (
+                            <motion.div 
+                              className="bg-gray-50/80 backdrop-blur-sm rounded-xl p-4 mt-3"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.3 }}
+                            >
+                              <div className="flex items-start gap-2">
+                                <Eye className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-gray-900 mb-2">AI Analysis</p>
+                                  <AIResponseDisplay 
+                                    content={upload.analysis}
+                                    suggestions={upload.suggestions || []}
+                                    tasks={upload.tasks || []}
+                                    metadata={upload.metadata || {}}
+                                    onNavigate={onNavigate}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     </div>
                   </motion.div>

@@ -1,12 +1,117 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Mic, Send, Loader, Paperclip, X } from 'lucide-react';
+import { Upload, Mic, Send, Loader, Paperclip, X, Check, Plus, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import UploadBox from './UploadBox';
 import FileUpload from './FileUpload';
 import VoiceRecorder from './VoiceRecorder';
+import AIResponseDisplay from './AIResponseDisplay';
 import { animations } from '../styles/design-system';
 import { supabase } from '../lib/supabase';
+
+// Component for displaying extracted tasks with save options
+const TaskSavePrompt = ({ tasks, onSave, onDismiss }) => {
+  const [selectedTasks, setSelectedTasks] = useState(new Set(tasks.map((_, index) => index)));
+
+  const toggleTask = (index) => {
+    const newSelected = new Set(selectedTasks);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedTasks(newSelected);
+  };
+
+  const handleSave = () => {
+    const tasksToSave = tasks.filter((_, index) => selectedTasks.has(index));
+    onSave(tasksToSave);
+  };
+
+  return (
+    <motion.div 
+      className="bg-blue-50/90 backdrop-blur-sm border border-blue-200/60 rounded-2xl p-4 mt-3"
+      variants={animations.slideUp}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-medium text-blue-900 flex items-center">
+          <Plus className="w-4 h-4 mr-2" />
+          Tasks Found ({tasks.length})
+        </h4>
+        <button
+          onClick={onDismiss}
+          className="text-blue-600 hover:text-blue-800 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      
+      <div className="space-y-2 mb-4">
+        {tasks.map((task, index) => (
+          <div 
+            key={index}
+            className={`flex items-start space-x-3 p-3 rounded-lg transition-all cursor-pointer ${
+              selectedTasks.has(index) 
+                ? 'bg-blue-100/80 border border-blue-300/60' 
+                : 'bg-white/80 border border-gray-200/60 hover:bg-blue-50/50'
+            }`}
+            onClick={() => toggleTask(index)}
+          >
+            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center mt-0.5 transition-colors ${
+              selectedTasks.has(index) 
+                ? 'bg-blue-500 border-blue-500' 
+                : 'border-gray-300 hover:border-blue-400'
+            }`}>
+              {selectedTasks.has(index) && (
+                <Check className="w-3 h-3 text-white" />
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900">{task.summary || task.title}</p>
+              <div className="flex items-center space-x-2 mt-1">
+                <span className={`px-2 py-0.5 text-xs rounded-full ${
+                  task.priority === 'high' ? 'bg-red-100 text-red-700' :
+                  task.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-green-100 text-green-700'
+                }`}>
+                  {task.priority || 'medium'}
+                </span>
+                <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700">
+                  {task.category || 'general'}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-blue-600">
+          {selectedTasks.size} of {tasks.length} tasks selected
+        </p>
+        <div className="flex space-x-2">
+          <button
+            onClick={onDismiss}
+            className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 transition-colors"
+          >
+            Dismiss
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={selectedTasks.size === 0}
+            className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs rounded-lg transition-colors flex items-center space-x-1"
+          >
+            <Save className="w-3 h-3" />
+            <span>Save {selectedTasks.size > 0 ? `(${selectedTasks.size})` : ''}</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
 
 const ChatBox = ({ className = "" }) => {
   const [message, setMessage] = useState('');
@@ -23,6 +128,7 @@ const ChatBox = ({ className = "" }) => {
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [showUploadBox, setShowUploadBox] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
+  const [pendingTasks, setPendingTasks] = useState({}); // Store pending tasks by message ID
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -96,15 +202,10 @@ const ChatBox = ({ className = "" }) => {
 
       const result = await response.json();
       
-      // Handle extracted tasks from AI response
-      if (result.tasks && result.tasks.length > 0) {
-        console.log('🧠 AI extracted tasks:', result.tasks);
-        await saveTasks(result.tasks);
-      }
-      
       // Create AI response message
+      const aiMessageId = Date.now() + 1;
       const aiMessage = {
-        id: Date.now() + 1,
+        id: aiMessageId,
         text: result.response,
         sender: "ai",
         timestamp: new Date(),
@@ -118,6 +219,15 @@ const ChatBox = ({ className = "" }) => {
       };
       
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Handle extracted tasks - show them for manual confirmation instead of auto-saving
+      if (result.tasks && result.tasks.length > 0) {
+        console.log('🧠 AI extracted tasks:', result.tasks);
+        setPendingTasks(prev => ({
+          ...prev,
+          [aiMessageId]: result.tasks
+        }));
+      }
       
     } catch (error) {
       console.error('Chat request failed:', error);
@@ -148,8 +258,106 @@ const ChatBox = ({ className = "" }) => {
     setShowFileUpload(false);
   };
 
-  const handleVoiceRecording = (audioInfo) => {
-    setAttachedFiles(prev => [...prev, audioInfo]);
+  const handleVoiceRecording = async (audioInfo) => {
+    console.log('🎤 Voice recording completed:', audioInfo);
+    console.log('🔍 Transcription data:', audioInfo.transcription);
+    console.log('🔍 AI Response data:', audioInfo.aiResponse);
+    
+    // Add user message showing the audio was recorded
+    const userMessage = {
+      id: Date.now(),
+      text: `🎤 Voice message recorded (${Math.round(audioInfo.duration || 0)}s)`,
+      sender: "user",
+      timestamp: new Date(),
+      attachments: [audioInfo]
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    
+    // If we have transcription results, show them immediately
+    if (audioInfo.transcription?.text || audioInfo.aiResponse) {
+      const transcriptionText = audioInfo.transcription?.text || '';
+      const aiResponse = audioInfo.aiResponse || '';
+      
+      console.log('📝 Processing transcription:', transcriptionText);
+      console.log('🤖 Processing AI response:', aiResponse);
+      
+      // Show transcription as a separate message if available
+      if (transcriptionText.trim()) {
+        const transcriptionMessage = {
+          id: Date.now() + 1,
+          text: `**Transcription:** ${transcriptionText}`,
+          sender: "ai",
+          timestamp: new Date(),
+          metadata: {
+            type: 'transcription',
+            confidence: audioInfo.transcription?.confidence || 0,
+            language: audioInfo.transcription?.language || 'unknown'
+          }
+        };
+        
+        setMessages(prev => [...prev, transcriptionMessage]);
+      }
+      
+      // Show AI analysis if available
+      if (aiResponse.trim() && aiResponse !== transcriptionText) {
+        const aiMessageId = Date.now() + 2;
+        const aiMessage = {
+          id: aiMessageId,
+          text: aiResponse,
+          sender: "ai",
+          timestamp: new Date(),
+          metadata: {
+            type: 'voice_analysis',
+            model: 'whisper + llama',
+            inputs_processed: ['audio']
+          }
+        };
+        
+        setMessages(prev => [...prev, aiMessage]);
+        
+        // Try to extract and save tasks from the AI response
+        try {
+          const taskExtractionResponse = await fetch('http://localhost:8000/api/v1/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: `Extract any tasks from this transcribed voice message: "${transcriptionText}"`
+            }),
+          });
+          
+          if (taskExtractionResponse.ok) {
+            const result = await taskExtractionResponse.json();
+            if (result.tasks && result.tasks.length > 0) {
+              console.log('🧠 Tasks extracted from voice message:', result.tasks);
+              setPendingTasks(prev => ({
+                ...prev,
+                [aiMessageId]: result.tasks
+              }));
+            }
+          }
+        } catch (error) {
+          console.error('Failed to extract tasks from voice message:', error);
+        }
+      }
+    } else {
+      console.log('⚠️ No transcription or AI response data found in audioInfo');
+      // Show a fallback message
+      const fallbackMessage = {
+        id: Date.now() + 1,
+        text: "Voice message uploaded successfully, but transcription data is not available. Please check the console for details.",
+        sender: "ai",
+        timestamp: new Date(),
+        metadata: {
+          type: 'transcription_error'
+        }
+      };
+      
+      setMessages(prev => [...prev, fallbackMessage]);
+    }
+    
     setShowVoiceRecorder(false);
   };
 
@@ -246,7 +454,11 @@ const ChatBox = ({ className = "" }) => {
                     : 'bg-white/90 backdrop-blur-sm text-gray-800 border border-gray-200/60 rounded-2xl rounded-bl-md border-l-4 border-blue-500 shadow-sm'
                 } p-4 transition-all duration-200`}
               >
-                <p className="text-sm md:text-base leading-relaxed">{msg.text}</p>
+                {msg.sender === 'ai' ? (
+                  <AIResponseDisplay content={msg.text} className="text-sm md:text-base" hideChatDirection={true} />
+                ) : (
+                  <p className="text-sm md:text-base leading-relaxed">{msg.text}</p>
+                )}
                 
                 {/* Show attachments for user messages */}
                 {msg.attachments && msg.attachments.length > 0 && (
@@ -276,6 +488,24 @@ const ChatBox = ({ className = "" }) => {
                     </p>
                   )}
                 </div>
+                
+                {/* Show task save prompt if this AI message has extracted tasks */}
+                {msg.sender === 'ai' && pendingTasks[msg.id] && (
+                  <TaskSavePrompt
+                    tasks={pendingTasks[msg.id]}
+                    onSave={(tasksToSave) => {
+                      saveTasks(tasksToSave);
+                      setPendingTasks(prev => ({
+                        ...prev,
+                        [msg.id]: undefined
+                      }));
+                    }}
+                    onDismiss={() => setPendingTasks(prev => ({
+                      ...prev,
+                      [msg.id]: undefined
+                    }))}
+                  />
+                )}
               </div>
             </motion.div>
           ))}
@@ -474,6 +704,7 @@ const ChatBox = ({ className = "" }) => {
           )}
         </AnimatePresence>
       </div>
+
     </div>
   );
 };

@@ -159,39 +159,7 @@ const Home = ({ onNavigate }) => {
         </div>
       </motion.div>
 
-      {/* Stats Section */}
-      <motion.div 
-        className="bg-gradient-to-r from-blue-50/80 to-purple-50/80 backdrop-blur-sm rounded-3xl p-8 md:p-12 border border-gray-200/60"
-        variants={animations.fadeIn}
-        initial="initial"
-        animate="animate"
-      >
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Trusted by Thousands</h2>
-          <p className="text-gray-600">Join our growing community of productive users.</p>
-        </div>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {stats.map((stat, index) => (
-            <motion.div
-              key={index}
-              className="text-center space-y-3"
-              variants={animations.fadeIn}
-              whileHover={{ scale: 1.05 }}
-            >
-              <div className="flex justify-center">
-                <div className="w-12 h-12 bg-white/80 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                  <stat.icon className={`w-6 h-6 ${stat.color}`} />
-                </div>
-              </div>
-              <div>
-                <div className="text-2xl md:text-3xl font-bold text-gray-900">{stat.value}</div>
-                <div className="text-sm text-gray-600 font-medium">{stat.label}</div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </motion.div>
+
 
       {/* Productivity Tips */}
       <motion.div 

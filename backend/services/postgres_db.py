@@ -241,10 +241,12 @@ class PostgreSQLDatabaseService:
         
         elif self.connection_type == "supabase":
             try:
-                # Only use fields that exist in the Supabase tasks table
-                # Don't include user_id if it's not a valid UUID to avoid RLS issues
+                # Include all required fields to avoid constraint violations
                 supabase_task = {
-                    "summary": task_data.get('summary', '')
+                    "summary": task_data.get('summary', ''),
+                    "category": task_data.get('category', 'general'),
+                    "priority": task_data.get('priority', 'medium'),
+                    "status": task_data.get('status', 'pending')
                 }
                 
                 # Only add user_id if it's a valid UUID format or None
@@ -349,6 +351,133 @@ class PostgreSQLDatabaseService:
             cleared_count = original_count - len(self.memory_storage['tasks'])
             logger.info(f"Cleared {cleared_count} tasks from memory")
             return cleared_count
+
+    async def update_task(self, task_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update an existing task"""
+        if not self.initialized:
+            await self.initialize_connections()
+        
+        if self.connection_type == "postgresql":
+            try:
+                async with self.async_session() as session:
+                    # Get the task first
+                    result = await session.execute(select(Task).where(Task.id == task_id))
+                    task = result.scalar_one_or_none()
+                    
+                    if not task:
+                        logger.warning(f"Task {task_id} not found for update")
+                        return None
+                    
+                    # Update task fields
+                    for key, value in updates.items():
+                        if hasattr(task, key):
+                            setattr(task, key, value)
+                    
+                    await session.commit()
+                    await session.refresh(task)
+                    
+                    logger.info(f"Updated task in PostgreSQL: {task.id}")
+                    
+                    return {
+                        "id": task.id,
+                        "summary": task.summary,
+                        "category": task.category,
+                        "priority": task.priority,
+                        "status": task.status,
+                        "user_id": task.user_id,
+                        "created_at": task.created_at.timestamp(),
+                        "updated_at": task.updated_at.timestamp()
+                    }
+            except Exception as e:
+                logger.error(f"Failed to update task in PostgreSQL: {e}")
+                return None
+        
+        elif self.connection_type == "supabase":
+            try:
+                result = self.supabase.table('tasks').update(updates).eq('id', task_id).execute()
+                
+                if result.data:
+                    logger.info(f"Updated task in Supabase: {task_id}")
+                    updated_task = result.data[0]
+                    return {
+                        "id": updated_task.get('id'),
+                        "summary": updated_task.get('summary'),
+                        "category": updated_task.get('category', 'general'),
+                        "priority": updated_task.get('priority', 'medium'),
+                        "status": updated_task.get('status', 'pending'),
+                        "user_id": updated_task.get('user_id'),
+                        "created_at": updated_task.get('created_at'),
+                        "updated_at": updated_task.get('updated_at')
+                    }
+                return None
+            except Exception as e:
+                logger.error(f"Failed to update task in Supabase: {e}")
+                return None
+        
+        else:
+            # Memory storage
+            for task in self.memory_storage['tasks']:
+                if task.get('id') == task_id:
+                    task.update(updates)
+                    task['updated_at'] = time.time()
+                    logger.info(f"Updated task in memory: {task_id}")
+                    return task
+            
+            logger.warning(f"Task {task_id} not found in memory storage")
+            return None
+
+    async def delete_task(self, task_id: int) -> bool:
+        """Delete a task by ID"""
+        if not self.initialized:
+            await self.initialize_connections()
+        
+        if self.connection_type == "postgresql":
+            try:
+                async with self.async_session() as session:
+                    result = await session.execute(delete(Task).where(Task.id == task_id))
+                    await session.commit()
+                    
+                    deleted = result.rowcount > 0
+                    if deleted:
+                        logger.info(f"Deleted task from PostgreSQL: {task_id}")
+                    else:
+                        logger.warning(f"Task {task_id} not found for deletion")
+                    
+                    return deleted
+            except Exception as e:
+                logger.error(f"Failed to delete task from PostgreSQL: {e}")
+                return False
+        
+        elif self.connection_type == "supabase":
+            try:
+                result = self.supabase.table('tasks').delete().eq('id', task_id).execute()
+                
+                deleted = len(result.data) > 0 if result.data else False
+                if deleted:
+                    logger.info(f"Deleted task from Supabase: {task_id}")
+                else:
+                    logger.warning(f"Task {task_id} not found for deletion")
+                
+                return deleted
+            except Exception as e:
+                logger.error(f"Failed to delete task from Supabase: {e}")
+                return False
+        
+        else:
+            # Memory storage
+            original_count = len(self.memory_storage['tasks'])
+            self.memory_storage['tasks'] = [
+                task for task in self.memory_storage['tasks'] 
+                if task.get('id') != task_id
+            ]
+            
+            deleted = len(self.memory_storage['tasks']) < original_count
+            if deleted:
+                logger.info(f"Deleted task from memory: {task_id}")
+            else:
+                logger.warning(f"Task {task_id} not found for deletion")
+            
+            return deleted
 
     # Placeholder methods for compatibility
     async def save_chat_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:

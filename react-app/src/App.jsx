@@ -21,7 +21,7 @@ function App() {
       case 'tasks':
         return <SavedTasks className="h-full" />;
       case 'upload':
-        return <Upload />;
+        return <Upload onNavigate={setCurrentPage} />;
       case 'about':
         return <About />;
       default:

@@ -21,7 +21,7 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx']
   };
 
-  const maxFileSize = 10 * 1024 * 1024; // 10MB
+  const maxFileSize = 5 * 1024 * 1024; // 5MB (recommended for audio)
 
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
@@ -109,10 +109,17 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
           );
           setUploadProgress(percentCompleted);
         },
-        timeout: 30000, // 30 second timeout
+        timeout: 120000, // 120 second timeout for AI processing
       });
 
       console.log('📁 File processing result:', response.data);
+      
+      // Extract structured data from response
+      const processingDetails = response.data.processing_details || {};
+      const fileAnalysis = processingDetails.file_analysis || {};
+      const suggestions = fileAnalysis.suggestions || [];
+      const tasks = fileAnalysis.tasks || [];
+      const metadata = fileAnalysis.metadata || {};
       
       const uploadMessage = {
         id: Date.now(),
@@ -122,14 +129,32 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
         timestamp: new Date(),
         success: true,
         analysis: response.data.response,
-        processingDetails: response.data.processing_details
+        processingDetails: response.data.processing_details,
+        suggestions: suggestions,
+        tasks: tasks,
+        metadata: {
+          ...metadata,
+          fileType: file.type,
+          processingTime: processingDetails.processing_time,
+          analysisEnhanced: true
+        }
       };
 
       if (onUploadComplete) {
         onUploadComplete(uploadMessage, file);
       }
 
-      toast.success(`File uploaded successfully!`);
+      // File-type specific success message
+      let successMessage = `File uploaded successfully!`;
+      if (file.type.startsWith('image/')) {
+        successMessage = `Image analyzed! Check the insights below for visual content and task recommendations.`;
+      } else if (file.type.startsWith('audio/')) {
+        successMessage = `Audio transcribed! Review the extracted text and action items below.`;
+      } else if (file.type.includes('pdf') || file.type.includes('document')) {
+        successMessage = `Document processed! See the content analysis and productivity suggestions below.`;
+      }
+
+      toast.success(successMessage);
       
       // Reset state
       setFile(null);
@@ -142,7 +167,7 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
       if (error.response?.data?.detail) {
         errorMessage = error.response.data.detail;
       } else if (error.code === 'ECONNABORTED') {
-        errorMessage = 'Upload timed out. Please try a smaller file.';
+        errorMessage = 'Processing timed out. Large images may take longer to analyze.';
       }
 
       toast.error(errorMessage);
@@ -229,6 +254,11 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
                 <p className="text-gray-600 mb-4">
                   Support for images, audio, documents and text files
                 </p>
+                <div className="mb-4 text-xs text-gray-500 space-y-1">
+                  <p>✨ <strong>Images:</strong> Get visual analysis, text extraction, and task insights</p>
+                  <p>🎵 <strong>Audio:</strong> Transcription with automatic action item detection</p>
+                  <p>📄 <strong>Documents:</strong> Content analysis and productivity recommendations</p>
+                </div>
                 <motion.button
                   type="button"
                   className="inline-flex items-center px-6 py-3 border border-blue-300/60 rounded-xl text-sm font-medium text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 transition-all duration-200 backdrop-blur-sm"
@@ -282,8 +312,12 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
               className="space-y-3"
             >
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Uploading...</span>
-                <span className="text-sm text-gray-500">{uploadProgress}%</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {uploadProgress === 100 ? 'Processing with AI...' : 'Uploading...'}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {uploadProgress === 100 ? 'Please wait' : `${uploadProgress}%`}
+                </span>
               </div>
               <div className="w-full bg-gray-200/60 rounded-full h-2 backdrop-blur-sm">
                 <motion.div
@@ -309,7 +343,7 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
             {isUploading ? (
               <>
                 <Loader className="w-4 h-4 animate-spin" />
-                <span>Uploading...</span>
+                <span>{uploadProgress === 100 ? 'AI Processing...' : 'Uploading...'}</span>
               </>
             ) : (
               <>

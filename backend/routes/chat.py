@@ -668,13 +668,13 @@ async def upload_audio(
                 }
             )
         
-        # Validate file size (10MB limit)
-        if file.size > 10 * 1024 * 1024:
+        # Validate file size (5MB limit for reliable processing)
+        if file.size > 5 * 1024 * 1024:
             raise HTTPException(
                 status_code=422,
                 detail={
                     "error": "File too large",
-                    "message": "Audio file must be smaller than 10MB"
+                    "message": "Audio file must be smaller than 5MB. Larger files may timeout during transcription."
                 }
             )
         
@@ -716,8 +716,10 @@ async def upload_audio(
                 response=processing_result.get("ai_response", {}).get("response", "Audio processed successfully"),
                 processing_details={
                     "transcription": processing_result.get("transcription", {}),
-                    "processing_time": processing_result["processing_time"],
-                    "total_time": round(total_time, 3)
+                    "processing_time": processing_result.get("processing_time", 0),
+                    "total_time": round(total_time, 3),
+                    "file_id": file_id,
+                    "filename": file.filename or "audio_recording"
                 },
                 inputs_processed=["audio"],
                 model_info=processing_result.get("ai_response", {}),
@@ -793,26 +795,63 @@ async def upload_file_analysis(
         processing_result = None
         inputs_processed = []
         
-        if file.content_type.startswith('image/'):
-            processing_result = await ai_service.process_image(upload_path)
+        # Handle cases where content_type might be None
+        content_type = file.content_type or ""
+        filename = file.filename or ""
+        
+        if content_type.startswith('image/') or filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            processing_result = await ai_service.process_image(upload_path, "general")
             inputs_processed = ["image"]
-        elif file.content_type.startswith('text/') or file.filename.endswith(('.txt', '.md', '.csv')):
+        elif content_type.startswith('audio/') or filename.endswith(('.mp3', '.wav', '.m4a', '.ogg', '.webm')):
+            # Process audio files for transcription
+            processing_result = await ai_service.process_audio(upload_path)
+            inputs_processed = ["audio"]
+        elif content_type.startswith('text/') or filename.endswith(('.txt', '.md', '.csv')):
             # Read text file content
             try:
                 async with aiofiles.open(upload_path, 'r', encoding='utf-8') as f:
                     text_content = await f.read()
                 
-                # Generate AI analysis of text content
+                # Generate enhanced AI analysis of text content
+                enhanced_text_prompt = f"""Please analyze this text file content and provide comprehensive task management insights:
+
+FILE CONTENT:
+{text_content[:2000]}...
+
+ANALYSIS FRAMEWORK:
+1. CONTENT OVERVIEW: What type of document is this and what is its main purpose?
+2. KEY INFORMATION: What are the most important points, decisions, or data?
+3. ACTIONABLE TASKS: What specific tasks, action items, or to-dos can be extracted?
+4. PRIORITIES & DEADLINES: What appears urgent or time-sensitive?
+5. ORGANIZATION STRATEGY: How should this information be organized for maximum productivity?
+6. NEXT STEPS: What logical follow-up actions should be taken?
+
+Focus on providing specific, implementable recommendations that would help with task management and productivity.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations."""
+
                 ai_result = await ai_service.generate_response(
-                    f"Please analyze and summarize this text content:\n\n{text_content[:2000]}...",
-                    context="Text file analysis"
+                    enhanced_text_prompt,
+                    context="Text file analysis - enhanced"
+                )
+                
+                # Add chat direction to the response
+                enhanced_ai_result = ai_result.copy()
+                enhanced_ai_result["response"] = ai_service._add_chat_direction(
+                    ai_result.get("response", ""), "document"
                 )
                 
                 processing_result = {
                     "status": "success",
-                    "analysis": ai_result["response"],
+                    "analysis": enhanced_ai_result["response"],
                     "processing_time": ai_result["response_time"],
-                    "ai_response": ai_result
+                    "ai_response": enhanced_ai_result,
+                    "suggestions": ai_service._extract_suggestions_from_response(ai_result["response"]),
+                    "metadata": {
+                        "file_size": len(text_content),
+                        "content_preview": text_content[:200] + "..." if len(text_content) > 200 else text_content,
+                        "analysis_enhanced": True
+                    }
                 }
                 inputs_processed = ["text_file"]
                 
@@ -825,7 +864,7 @@ async def upload_file_analysis(
             # Fallback for unsupported file types
             processing_result = {
                 "status": "partial",
-                "analysis": f"File '{file.filename}' uploaded successfully. This file type ({file.content_type}) requires manual review.",
+                "analysis": f"File '{filename}' uploaded successfully. This file type ({content_type}) requires manual review.",
                 "processing_time": 0.1
             }
             inputs_processed = ["file"]
@@ -853,8 +892,16 @@ async def upload_file_analysis(
         
         total_time = time.time() - start_time
         
+        # Extract the response text properly
+        if "ai_insights" in processing_result and isinstance(processing_result["ai_insights"], str):
+            response_text = processing_result["ai_insights"]
+        elif "analysis" in processing_result and isinstance(processing_result["analysis"], dict):
+            response_text = processing_result["analysis"].get("description", "File processed successfully")
+        else:
+            response_text = processing_result.get("ai_response", {}).get("response", "File processed")
+        
         return MultimodalResponse(
-            response=processing_result.get("analysis", processing_result.get("ai_response", {}).get("response", "File processed")),
+            response=response_text,
             processing_details={
                 "file_analysis": processing_result,
                 "processing_time": processing_result.get("processing_time", 0),

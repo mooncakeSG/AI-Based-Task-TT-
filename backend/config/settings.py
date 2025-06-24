@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""  # Will be set via environment variable (service/secret key)
     
     # File Upload Settings
-    max_file_size: int = 10 * 1024 * 1024  # 10MB
+    max_file_size: int = 5 * 1024 * 1024  # 5MB (optimized for audio transcription)
     allowed_file_types: str = "image/jpeg,image/png,image/gif,image/webp,audio/mpeg,audio/wav,audio/ogg,audio/m4a,application/pdf,text/plain"
     upload_dir: str = "uploads"
     

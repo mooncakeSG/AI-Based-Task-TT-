@@ -152,10 +152,12 @@ const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
       const result = await response.json();
       
       console.log('🎤 Audio processing result:', result);
+      console.log('🔍 Transcription from backend:', result.processing_details?.transcription);
+      console.log('🔍 AI Response from backend:', result.response);
       
       const audioInfo = {
-        id: result.file_id || `audio_${Date.now()}`,
-        name: result.filename || `recording_${Date.now()}.webm`,
+        id: result.processing_details?.file_id || `audio_${Date.now()}`,
+        name: result.processing_details?.filename || `recording_${Date.now()}.webm`,
         type: 'audio/webm',
         size: audioFile.size,
         duration: recordingTime,

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 # Import routes and config
 from routes.chat import router as chat_router
+from routes.monitoring import router as monitoring_router
 from config.settings import settings, get_cors_origins, get_allowed_file_types
 from services.ai import ai_service
 from services.postgres_db import database_service
@@ -172,6 +173,7 @@ async def root():
 
 # Include routers
 app.include_router(chat_router, prefix="/api/v1", tags=["Chat & Upload"])
+app.include_router(monitoring_router, tags=["Monitoring"])
 
 # API status endpoint
 @app.get("/api/v1/status")

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 
-const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize = 10 * 1024 * 1024 }) => {
+const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize = 5 * 1024 * 1024 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -159,6 +159,7 @@ const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize =
                 <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
               </p>
               <p className="text-sm text-gray-500">Images and audio files up to {maxSize / (1024 * 1024)}MB</p>
+              <p className="text-xs text-gray-400">Audio files larger than 5MB may timeout</p>
             </>
           )}
         </div>

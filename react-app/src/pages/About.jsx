@@ -258,7 +258,7 @@ const About = () => {
             </motion.a>
             
             <motion.a
-              href="https://github.com/intelliassist-ai"
+              href="https://github.com/mooncakeSG/AI-Based-Task-TT-.git"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 px-6 py-3 bg-gray-800 text-white rounded-2xl font-semibold hover:bg-gray-900 transition-all duration-300 shadow-lg hover:shadow-xl"

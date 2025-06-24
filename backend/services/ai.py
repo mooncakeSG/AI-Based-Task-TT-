@@ -9,6 +9,7 @@ from groq import Groq
 from PIL import Image
 import io
 from config.settings import settings
+from .monitoring import track_groq_call, track_huggingface_call
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class AIService:
             "image_captioning": "Salesforce/blip-image-captioning-large",
             "document_qa": "microsoft/DialoGPT-medium",  # Can be upgraded to better models
             "chart_analysis": "microsoft/pix2struct-base",
-            "general_vision": "Salesforce/blip2-opt-2.7b"
+            "general_vision": "Salesforce/blip-image-captioning-large"  # Use BLIP for general vision too
         }
         self.audio_models = {
             "speech_to_text": "openai/whisper-large-v3"
@@ -116,38 +117,50 @@ Remember: You're here to make users more productive and organized. Always think 
             return context
         return context[:max_length] + "... [truncated]"
     
-    async def _call_huggingface_api(self, model_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def _call_huggingface_api(self, model_name: str, payload: Any, is_audio: bool = False) -> Dict[str, Any]:
         """
         Make API call to Hugging Face Inference API
         
         Args:
             model_name (str): HuggingFace model name
-            payload (dict): Request payload
+            payload: Request payload (dict for JSON, bytes for audio)
+            is_audio (bool): Whether this is an audio API call
             
         Returns:
             Dict[str, Any]: API response
         """
         if not self.hf_api_key:
+            logger.warning("HuggingFace API key not configured - returning placeholder response")
             return {
-                "error": "Hugging Face API key not configured",
-                "status": "not_configured"
+                "error": "HuggingFace API key not configured. Please add HF_API_KEY to your .env file.",
+                "status": "not_configured",
+                "suggestion": "Get a free API key from https://huggingface.co/settings/tokens"
             }
         
         url = f"{self.hf_base_url}/{model_name}"
         headers = {
             "Authorization": f"Bearer {self.hf_api_key}",
-            "Content-Type": "application/json"
         }
         
+        # Set content type based on request type
+        if is_audio:
+            headers["Content-Type"] = "audio/webm"
+        else:
+            headers["Content-Type"] = "application/json"
+        
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, json=payload, headers=headers)
+            async with httpx.AsyncClient(timeout=60.0) as client:  # Longer timeout for audio
+                if is_audio:
+                    response = await client.post(url, content=payload, headers=headers)
+                else:
+                    response = await client.post(url, json=payload, headers=headers)
                 
                 if response.status_code == 200:
                     return {"data": response.json(), "status": "success"}
                 elif response.status_code == 503:
                     return {"error": "Model is loading, please wait", "status": "loading"}
                 else:
+                    logger.error(f"HF API error {response.status_code}: {response.text}")
                     return {
                         "error": f"API error: {response.status_code}",
                         "status": "error",
@@ -183,95 +196,239 @@ Remember: You're here to make users more productive and organized. Always think 
             logger.error(f"Failed to encode image: {str(e)}")
             raise
     
-    async def process_image(self, image_path: str, task_type: str = "general") -> Dict[str, Any]:
+    async def process_image(self, image_path: str, task_type: str = "general", include_chat_direction: bool = True) -> Dict[str, Any]:
         """
-        Process image using Hugging Face vision models
+        Process image using vision AI models
         
         Args:
-            image_path (str): Path to image file
-            task_type (str): Type of analysis (general, document, chart, caption)
+            image_path (str): Path to the image file
+            task_type (str): Type of analysis (general, document, chart, meeting, planning)
+            include_chat_direction (bool): Whether to add chat direction to the response
             
         Returns:
-            Dict[str, Any]: Analysis results
+            Dict[str, Any]: Processing results with analysis and metadata
         """
-        start_time = time.time()
-        
-        try:
-            logger.info(f"Processing image: {image_path}, task: {task_type}")
-            
-            # Select appropriate model based on task
-            model_map = {
-                "caption": "image_captioning",
-                "document": "document_qa", 
-                "chart": "chart_analysis",
-                "general": "general_vision"
-            }
-            
-            model_key = model_map.get(task_type, "general_vision")
-            model_name = self.vision_models[model_key]
-            
-            # Encode image
-            image_b64 = self._encode_image_to_base64(image_path)
-            
-            # Prepare payload based on model type
-            if task_type == "caption":
-                # For image captioning
-                payload = {"inputs": image_b64}
-            else:
-                # For VQA models
-                payload = {
-                    "inputs": {
-                        "image": image_b64,
-                        "question": self._get_vision_prompt(task_type)
+        tracker = await track_huggingface_call("image_processing")
+        async with tracker:
+            try:
+                logger.info(f"Processing image: {image_path} with task type: {task_type}")
+                start_time = time.time()
+                
+                # Check if file exists
+                if not os.path.exists(image_path):
+                    return {
+                        "status": "error",
+                        "error": f"Image file not found: {image_path}"
                     }
-                }
-            
-            # Call Hugging Face API
-            result = await self._call_huggingface_api(model_name, payload)
-            
-            if result["status"] == "success":
-                # Process the response
-                analysis = self._process_vision_response(result["data"], task_type)
                 
-                # Generate contextual response using LLaMA
-                if analysis.get("description"):
-                    llama_response = await self.generate_response(
-                        f"I've analyzed an image and found: {analysis['description']}. Please provide helpful insights about this in the context of task management and productivity.",
-                        context="Image analysis for task management"
-                    )
+                # Set request size (approximate file size)
+                try:
+                    file_size = os.path.getsize(image_path)
+                    tracker.set_request_size(file_size)
+                except:
+                    pass
+                
+                # Try Hugging Face API first, fallback to local processing
+                try:
+                    result = await self._process_image_with_hf_api(image_path, task_type, include_chat_direction)
+                    if result["status"] == "success":
+                        tracker.set_status(200)
+                        return result
+                    else:
+                        logger.warning(f"HF API failed: {result.get('error', 'Unknown error')}")
+                except Exception as hf_error:
+                    logger.warning(f"HF API processing failed: {str(hf_error)}")
+                
+                # Fallback to local processing
+                logger.info("Falling back to local image processing")
+                result = await self._process_image_locally(image_path, task_type, include_chat_direction)
+                
+                # Track response size
+                if result.get("ai_insights"):
+                    tracker.set_response_size(len(str(result["ai_insights"]).encode('utf-8')))
+                
+                tracker.set_status(200 if result["status"] == "success" else 500)
+                return result
+                
+            except Exception as e:
+                logger.error(f"Image processing failed: {str(e)}")
+                tracker.set_status(500, str(e))
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "processing_time": 0
+                }
+    
+    async def _process_image_locally(self, image_path: str, task_type: str, include_chat_direction: bool) -> Dict[str, Any]:
+        """
+        Process image locally using transformers library (if available)
+        """
+        try:
+            # Try to import transformers and PIL
+            from transformers import BlipProcessor, BlipForConditionalGeneration
+            from PIL import Image
+            import torch
+            
+            logger.info("Attempting local image processing...")
+            
+            # Load the model (this will be cached after first load)
+            if not hasattr(self, '_blip_processor'):
+                logger.info("Loading BLIP model for local image processing...")
+                try:
+                    # Use the base model for reliability
+                    self._blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+                    self._blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
                     
-                    analysis["ai_insights"] = llama_response.get("response", "")
+                    # Use GPU if available
+                    if torch.cuda.is_available():
+                        self._blip_model = self._blip_model.to("cuda")
+                        logger.info("BLIP model loaded on GPU")
+                    else:
+                        logger.info("BLIP model loaded on CPU")
+                        
+                    logger.info("✅ BLIP model loaded successfully")
+                    
+                except Exception as model_error:
+                    logger.error(f"Failed to load BLIP model: {model_error}")
+                    raise Exception(f"Model loading failed: {str(model_error)}")
+            
+            # Load and process the image
+            try:
+                image = Image.open(image_path).convert('RGB')
+                logger.info(f"Image loaded: {image.size}")
+            except Exception as img_error:
+                logger.error(f"Failed to load image: {img_error}")
+                raise Exception(f"Image loading failed: {str(img_error)}")
+            
+            # Process the image
+            try:
+                inputs = self._blip_processor(image, return_tensors="pt")
                 
-                processing_time = time.time() - start_time
+                # Move to GPU if available
+                if torch.cuda.is_available() and hasattr(self._blip_model, 'device'):
+                    inputs = {k: v.to("cuda") for k, v in inputs.items()}
                 
-                return {
-                    "status": "success",
-                    "analysis": analysis,
-                    "model_used": model_name,
-                    "task_type": task_type,
-                    "processing_time": round(processing_time, 3)
-                }
-            else:
-                return {
-                    "status": result["status"],
-                    "error": result.get("error", "Unknown error"),
-                    "processing_time": round(time.time() - start_time, 3)
-                }
+                # Generate caption
+                with torch.no_grad():
+                    generated_ids = self._blip_model.generate(**inputs, max_new_tokens=50, do_sample=False)
+                    caption = self._blip_processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
                 
+                logger.info(f"Generated caption: {caption}")
+                
+                if caption and len(caption) > 0:
+                    # Determine enhanced context based on image content
+                    enhanced_task_type = self._determine_image_context(caption, task_type)
+                    
+                    # Generate AI insights using the enhanced vision prompt
+                    vision_prompt = self._get_vision_prompt(enhanced_task_type)
+                    insight_prompt = f"""Image Analysis: "{caption}"
+
+{vision_prompt}
+
+Based on this image content, provide structured, actionable recommendations that would help with task management and productivity. Be specific and practical."""
+
+                    # Generate AI insights
+                    ai_insights = await self.generate_response(insight_prompt, context=f"Image analysis - {enhanced_task_type}")
+                    
+                    # Add chat direction to the response if requested
+                    if include_chat_direction:
+                        enhanced_response = self._add_chat_direction(ai_insights.get("response", ""), "image")
+                    else:
+                        enhanced_response = ai_insights.get("response", "")
+                    
+                    return {
+                        "status": "success",
+                        "description": caption,
+                        "confidence": 0.9,  # Local processing is generally reliable
+                        "type": "local_caption",
+                        "model_used": "Salesforce/blip-image-captioning-base (local)",
+                        "context_type": enhanced_task_type,
+                        "ai_insights": enhanced_response,
+                        "tasks": ai_insights.get("tasks", []),
+                        "suggestions": self._extract_suggestions_from_response(ai_insights.get("response", "")),
+                        "metadata": {
+                            "original_task_type": task_type,
+                            "detected_context": enhanced_task_type,
+                            "caption_length": len(caption),
+                            "processing_enhanced": True
+                        }
+                    }
+                else:
+                    raise Exception("Empty caption generated")
+                    
+            except Exception as proc_error:
+                logger.error(f"Failed to process image: {proc_error}")
+                raise Exception(f"Image processing failed: {str(proc_error)}")
+            
+        except ImportError as e:
+            logger.debug(f"Local image processing dependencies not available: {e}")
+            raise Exception("Local image processing not available - missing dependencies")
         except Exception as e:
-            logger.error(f"Image processing failed: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "processing_time": round(time.time() - start_time, 3)
-            }
+            logger.error(f"Local image processing failed: {e}")
+            raise Exception(f"Local image processing error: {str(e)}")
     
     def _get_vision_prompt(self, task_type: str) -> str:
         """Get appropriate prompt for vision tasks"""
         prompts = {
-            "document": "What text and important information can you extract from this document?",
-            "chart": "Describe this chart or diagram. What data does it show?",
-            "general": "What do you see in this image? Focus on any tasks, notes, or work-related content."
+            "document": """Analyze this document and provide specific, actionable insights for task management:
+
+1. CONTENT ANALYSIS: What are the key topics, decisions, or information presented?
+2. ACTIONABLE TASKS: What specific tasks, deadlines, or action items can be extracted?
+3. PRIORITIES: What appears to be most urgent or important?
+4. NEXT STEPS: What logical next steps or follow-up actions should be taken?
+5. ORGANIZATION: How can this information be best organized for productivity?
+
+Focus on practical, implementable suggestions that would help someone be more productive and organized.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations.""",
+
+            "chart": """Analyze this chart/diagram and provide task management insights:
+
+1. DATA INSIGHTS: What key trends, patterns, or findings does this data show?
+2. DECISION POINTS: What decisions or actions does this data suggest?
+3. MONITORING TASKS: What metrics or areas should be tracked based on this data?
+4. IMPROVEMENT OPPORTUNITIES: What areas for improvement or optimization are evident?
+5. ACTION ITEMS: What specific tasks should be created based on these insights?
+
+Provide specific, data-driven recommendations for task management and productivity.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations.""",
+
+            "general": """Analyze this image comprehensively for task management and productivity insights:
+
+1. VISUAL CONTENT: What do you see in this image? (objects, text, people, activities)
+2. WORK-RELATED ELEMENTS: Identify any tasks, notes, schedules, or work-related content
+3. ACTIONABLE INSIGHTS: What specific actions or tasks can be derived from this image?
+4. PRODUCTIVITY SUGGESTIONS: How can this information be used to improve organization or efficiency?
+5. CONTEXT CLUES: What context or situation does this image suggest, and what follow-up actions are needed?
+
+Be specific and practical in your suggestions, focusing on actionable task management advice.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations.""",
+
+            "meeting": """Analyze this meeting-related content and extract task management value:
+
+1. MEETING CONTENT: What meeting information, agenda items, or discussion points are visible?
+2. ACTION ITEMS: What specific tasks or assignments can be identified?
+3. DEADLINES: Are there any dates, timelines, or deadlines mentioned?
+4. RESPONSIBILITIES: Who is responsible for what actions?
+5. FOLLOW-UP: What follow-up meetings, communications, or check-ins are needed?
+
+Focus on extracting concrete, assignable tasks and organizational insights.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations.""",
+
+            "planning": """Analyze this planning or organizational content:
+
+1. PLANNING ELEMENTS: What planning information, schedules, or organizational content is shown?
+2. TASK BREAKDOWN: How can larger goals be broken down into specific, manageable tasks?
+3. TIMELINE: What is the suggested timeline or sequence of activities?
+4. RESOURCE NEEDS: What resources, tools, or support might be needed?
+5. MILESTONES: What key milestones or checkpoints should be established?
+
+Provide structured, implementable planning and task management recommendations.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations."""
         }
         return prompts.get(task_type, prompts["general"])
     
@@ -306,89 +463,289 @@ Remember: You're here to make users more productive and organized. Always think 
                 "type": "error"
             }
     
-    async def process_audio(self, audio_path: str) -> Dict[str, Any]:
+    async def process_audio(self, audio_path: str, include_chat_direction: bool = True) -> Dict[str, Any]:
         """
         Process audio using Hugging Face Whisper model for speech-to-text
         
         Args:
-            audio_path (str): Path to audio file
-            
-        Returns:
-            Dict[str, Any]: Transcription results
+            audio_path (str): Path to the audio file
+            include_chat_direction (bool): Whether to add chat direction to the response
         """
-        start_time = time.time()
-        
-        try:
-            logger.info(f"Processing audio: {audio_path}")
+        tracker = await track_huggingface_call("whisper/speech-to-text")
+        async with tracker:
+            start_time = time.time()
             
-            # Check if file exists and get file info
-            if not os.path.exists(audio_path):
-                return {
-                    "status": "error",
-                    "error": "Audio file not found",
-                    "processing_time": 0
-                }
-            
-            file_size = os.path.getsize(audio_path)
-            if file_size > 25 * 1024 * 1024:  # 25MB limit for most APIs
-                return {
-                    "status": "error", 
-                    "error": "Audio file too large (max 25MB)",
-                    "processing_time": round(time.time() - start_time, 3)
-                }
-            
-            # Read and encode audio file
-            with open(audio_path, "rb") as audio_file:
-                audio_data = audio_file.read()
-                audio_b64 = base64.b64encode(audio_data).decode()
-            
-            # Use Whisper model for transcription
-            model_name = self.audio_models["speech_to_text"]
-            payload = {"inputs": audio_b64}
-            
-            # Call Hugging Face API
-            result = await self._call_huggingface_api(model_name, payload)
-            
-            if result["status"] == "success":
-                # Process transcription result
-                transcription = self._process_audio_response(result["data"])
+            try:
+                logger.info(f"Processing audio: {audio_path}")
                 
-                if transcription.get("text"):
-                    # Generate AI response based on transcribed text
-                    llama_response = await self.generate_response(
-                        transcription["text"],
-                        context="Voice message transcription"
+                # Check if file exists
+                if not os.path.exists(audio_path):
+                    tracker.set_status(404, "Audio file not found")
+                    return {
+                        "status": "error",
+                        "error": "Audio file not found",
+                        "processing_time": 0
+                    }
+                
+                file_size = os.path.getsize(audio_path)
+                logger.info(f"Audio file size: {file_size} bytes")
+                
+                # Track request size
+                tracker.set_request_size(file_size)
+                
+                if file_size > 25 * 1024 * 1024:  # 25MB absolute limit
+                    tracker.set_status(413, "Audio file too large")
+                    return {
+                        "status": "error", 
+                        "error": "Audio file too large (max 25MB)",
+                        "processing_time": round(time.time() - start_time, 3)
+                    }
+                
+                # Warn about potential timeout for larger files
+                if file_size > 5 * 1024 * 1024:  # 5MB recommended limit
+                    logger.warning(f"Large audio file ({file_size / (1024*1024):.1f}MB) - may timeout")
+                
+                # Check if HuggingFace API key is available
+                if not self.hf_api_key:
+                    logger.warning("HuggingFace API key not configured")
+                    tracker.set_status(503, "HuggingFace API key not configured")
+                    
+                    helpful_response = await self.generate_response(
+                        "The user uploaded an audio file. Please acknowledge this and explain that transcription requires HuggingFace API configuration.",
+                        context="Audio upload - API not configured"
                     )
                     
-                    processing_time = time.time() - start_time
+                    response_data = {
+                        "status": "success",
+                        "transcription": {
+                            "text": "Audio uploaded successfully! To enable transcription, please configure your HuggingFace API key.",
+                            "confidence": 0.0,
+                            "language": "unknown"
+                        },
+                        "ai_response": helpful_response,
+                        "model_used": "placeholder",
+                        "processing_time": round(time.time() - start_time, 3)
+                    }
+                    
+                    tracker.set_response_size(len(str(response_data).encode('utf-8')))
+                    return response_data
+                
+                # Read audio file
+                with open(audio_path, "rb") as audio_file:
+                    audio_data = audio_file.read()
+                
+                # Call HuggingFace Whisper API
+                model_name = self.audio_models["speech_to_text"]
+                url = f"{self.hf_base_url}/{model_name}"
+                
+                # Determine content type based on file extension
+                content_type = "audio/wav"  # Default
+                if audio_path.lower().endswith('.mp3'):
+                    content_type = "audio/mpeg"
+                elif audio_path.lower().endswith('.wav'):
+                    content_type = "audio/wav"
+                elif audio_path.lower().endswith('.webm'):
+                    content_type = "audio/webm"
+                elif audio_path.lower().endswith('.ogg'):
+                    content_type = "audio/ogg"
+                elif audio_path.lower().endswith('.flac'):
+                    content_type = "audio/flac"
+                
+                headers = {
+                    "Authorization": f"Bearer {self.hf_api_key}",
+                    "Content-Type": content_type
+                }
+                
+                logger.info(f"Calling HuggingFace API: {url}")
+                
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.post(
+                            url, 
+                            content=audio_data, 
+                            headers=headers
+                        )
+                        
+                        logger.info(f"HuggingFace API response: {response.status_code}")
+                        
+                        # Track response
+                        tracker.set_status(response.status_code)
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            logger.info(f"Transcription response: {data}")
+                            
+                            # Track successful response size
+                            tracker.set_response_size(len(response.content))
+                            
+                            # Process transcription result
+                            transcription = self._process_audio_response(data)
+                            
+                            if transcription.get("text") and transcription["text"].strip():
+                                # Generate AI response based on transcribed text with enhanced prompt
+                                enhanced_audio_prompt = f"""The user provided an audio recording that was transcribed as: "{transcription['text']}"
+
+Please analyze this transcribed content and provide comprehensive task management insights:
+
+1. CONTENT SUMMARY: What is the main topic or purpose of this audio?
+2. ACTION ITEMS: What specific tasks, assignments, or action items are mentioned?
+3. DEADLINES & TIMELINES: Are there any dates, deadlines, or time-sensitive items?
+4. PEOPLE & RESPONSIBILITIES: Who is mentioned and what are their responsibilities?
+5. FOLLOW-UP ACTIONS: What follow-up actions, meetings, or check-ins are needed?
+6. ORGANIZATION SUGGESTIONS: How can this information be best organized for productivity?
+
+Focus on extracting actionable, specific tasks and providing practical productivity recommendations.
+
+At the end of your response, encourage the user to use the Chat feature for further assistance with implementing these recommendations."""
+
+                                llama_response = await self.generate_response(
+                                    enhanced_audio_prompt,
+                                    context="Voice message transcription - enhanced analysis"
+                                )
+                                
+                                # Add chat direction to the response if requested
+                                enhanced_llama_response = llama_response.copy()
+                                if include_chat_direction:
+                                    enhanced_llama_response["response"] = self._add_chat_direction(
+                                        llama_response.get("response", ""), "audio"
+                                    )
+                                else:
+                                    enhanced_llama_response["response"] = llama_response.get("response", "")
+                                
+                                processing_time = time.time() - start_time
+                                
+                                return {
+                                    "status": "success",
+                                    "transcription": transcription,
+                                    "ai_response": enhanced_llama_response,
+                                    "model_used": model_name,
+                                    "processing_time": round(processing_time, 3),
+                                    "suggestions": self._extract_suggestions_from_response(llama_response.get("response", "")),
+                                    "metadata": {
+                                        "transcription_length": len(transcription.get("text", "")),
+                                        "analysis_enhanced": True,
+                                        "audio_file_size": file_size
+                                    }
+                                }
+                            else:
+                                # Fallback if no text transcribed
+                                helpful_response = await self.generate_response(
+                                    "The user uploaded an audio file, but no speech was detected. Please provide helpful guidance.",
+                                    context="Audio transcription - no speech detected"
+                                )
+                                
+                                return {
+                                    "status": "success",
+                                    "transcription": {
+                                        "text": "No speech detected in the audio file. Please try recording again with clearer audio.",
+                                        "confidence": 0.0,
+                                        "language": "unknown"
+                                    },
+                                    "ai_response": helpful_response,
+                                    "model_used": model_name,
+                                    "processing_time": round(time.time() - start_time, 3)
+                                }
+                        
+                        elif response.status_code == 503:
+                            # Model is loading
+                            logger.info("HuggingFace model is loading")
+                            tracker.set_response_size(len(response.content))
+                            
+                            helpful_response = await self.generate_response(
+                                "The speech-to-text model is currently loading. Please try again in a moment.",
+                                context="Model loading"
+                            )
+                            
+                            return {
+                                "status": "success",
+                                "transcription": {
+                                    "text": "The speech-to-text model is currently loading. Please try again in a moment.",
+                                    "confidence": 0.0,
+                                    "language": "unknown"
+                                },
+                                "ai_response": helpful_response,
+                                "model_used": "loading",
+                                "processing_time": round(time.time() - start_time, 3)
+                            }
+                            
+                        else:
+                            error_text = response.text
+                            logger.error(f"HuggingFace API error {response.status_code}: {error_text}")
+                            
+                            tracker.set_response_size(len(response.content))
+                            tracker.set_status(response.status_code, error_text)
+                            
+                            helpful_response = await self.generate_response(
+                                f"There was an issue with the audio transcription service (error {response.status_code}). Please try again later.",
+                                context="Transcription service error"
+                            )
+                            
+                            return {
+                                "status": "success",
+                                "transcription": {
+                                    "text": f"Audio transcription temporarily unavailable (service error {response.status_code}). Please try again later.",
+                                    "confidence": 0.0,
+                                    "language": "unknown"
+                                },
+                                "ai_response": helpful_response,
+                                "model_used": "error",
+                                "processing_time": round(time.time() - start_time, 3)
+                            }
+                            
+                except httpx.TimeoutException:
+                    logger.warning("Audio transcription timeout")
+                    tracker.set_status(408, "Request timeout")
+                    
+                    helpful_response = await self.generate_response(
+                        "The audio file took too long to process. This might be because it's too long or the service is busy.",
+                        context="Transcription timeout"
+                    )
                     
                     return {
                         "status": "success",
-                        "transcription": transcription,
-                        "ai_response": llama_response,
-                        "model_used": model_name,
-                        "processing_time": round(processing_time, 3)
-                    }
-                else:
-                    return {
-                        "status": "error",
-                        "error": "No transcription generated",
+                        "transcription": {
+                            "text": "Audio processing timeout - the file may be too long or the service is busy. Please try with a shorter audio clip.",
+                            "confidence": 0.0,
+                            "language": "unknown"
+                        },
+                        "ai_response": helpful_response,
+                        "model_used": "timeout",
                         "processing_time": round(time.time() - start_time, 3)
                     }
-            else:
+                    
+                except Exception as api_error:
+                    logger.error(f"Audio API call failed: {str(api_error)}")
+                    tracker.set_status(500, str(api_error))
+                    
+                    helpful_response = await self.generate_response(
+                        "There was a technical issue with audio transcription. The file was uploaded successfully but couldn't be processed.",
+                        context="Transcription technical error"
+                    )
+                    
+                    return {
+                        "status": "success",
+                        "transcription": {
+                            "text": f"Audio uploaded successfully, but transcription failed due to a technical issue: {str(api_error)}",
+                            "confidence": 0.0,
+                            "language": "unknown"
+                        },
+                        "ai_response": helpful_response,
+                        "model_used": "error",
+                        "processing_time": round(time.time() - start_time, 3)
+                    }
+                
+            except Exception as e:
+                logger.error(f"Audio processing failed: {str(e)}", exc_info=True)
+                tracker.set_status(500, str(e))
+                
+                error_response = "I apologize, but I'm experiencing technical difficulties. Please try again later."
+                tracker.set_response_size(len(error_response.encode('utf-8')))
+                
                 return {
-                    "status": result["status"],
-                    "error": result.get("error", "Unknown error"),
+                    "status": "error",
+                    "error": f"Audio processing failed: {str(e)}",
                     "processing_time": round(time.time() - start_time, 3)
                 }
-                
-        except Exception as e:
-            logger.error(f"Audio processing failed: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "processing_time": round(time.time() - start_time, 3)
-            }
     
     def _process_audio_response(self, data: Any) -> Dict[str, Any]:
         """Process audio transcription response"""
@@ -462,7 +819,7 @@ Remember: You're here to make users more productive and organized. Always think 
             
             # Process audio first (speech-to-text)
             if audio_path:
-                audio_result = await self.process_audio(audio_path)
+                audio_result = await self.process_audio(audio_path, include_chat_direction=False)
                 results["audio_processing"] = audio_result
                 results["inputs_processed"].append("audio")
                 
@@ -473,7 +830,7 @@ Remember: You're here to make users more productive and organized. Always think 
             
             # Process image
             if image_path:
-                image_result = await self.process_image(image_path, "general")
+                image_result = await self.process_image(image_path, "general", include_chat_direction=False)
                 results["image_processing"] = image_result
                 results["inputs_processed"].append("image")
                 
@@ -591,7 +948,7 @@ Please provide a comprehensive response that addresses all the input types and r
                     task = {
                         'title': task_text[:100],  # Limit title length
                         'summary': task_text,
-                        'status': 'todo',
+                        'status': 'pending',
                         'priority': priority,
                         'category': category
                     }
@@ -608,7 +965,7 @@ Please provide a comprehensive response that addresses all the input types and r
             task = {
                 'title': f"Follow AI recommendations",
                 'summary': summary + "...",
-                'status': 'todo',
+                'status': 'pending',
                 'priority': 'medium',
                 'category': 'ai-generated'
             }
@@ -627,196 +984,228 @@ Please provide a comprehensive response that addresses all the input types and r
         Returns:
             Dict[str, Any]: AI response with metadata and extracted tasks
         """
-        try:
-            logger.info(f"Generating AI response for prompt length: {len(prompt)}")
-            start_time = time.time()
-            
-            # If no Groq client available, use placeholder
-            if not self.groq_client:
-                logger.warning("Groq client not available, using placeholder response")
-                await asyncio.sleep(0.5)  # Simulate delay
-                ai_response = f"[PLACEHOLDER MODE] You said: {prompt}\n\nI'm IntelliAssist.AI, ready to help with your tasks! To enable full AI capabilities, please add your Groq API key to the .env file."
+        tracker = await track_groq_call("chat/completions")
+        async with tracker:
+            try:
+                logger.info(f"Generating AI response for prompt length: {len(prompt)}")
+                start_time = time.time()
                 
-                response_time = time.time() - start_time
+                # Track request size
+                tracker.set_request_size(len(prompt.encode('utf-8')))
+                
+                # If no Groq client available, use placeholder
+                if not self.groq_client:
+                    logger.warning("Groq client not available, using placeholder response")
+                    await asyncio.sleep(0.5)  # Simulate delay
+                    ai_response = f"[PLACEHOLDER MODE] You said: {prompt}\n\nI'm IntelliAssist.AI, ready to help with your tasks! To enable full AI capabilities, please add your Groq API key to the .env file."
+                    
+                    tracker.set_response_size(len(ai_response.encode('utf-8')))
+                    tracker.set_status(503, "Groq API key not configured")
+                    
+                    response_time = time.time() - start_time
+                    return {
+                        "response": ai_response,
+                        "model": self.groq_model,
+                        "response_time": round(response_time, 3),
+                        "tokens_used": len(prompt.split()) + len(ai_response.split()),
+                        "status": "placeholder",
+                        "tasks": []
+                    }
+                
+                # Prepare messages for the conversation
+                messages = [
+                    {"role": "system", "content": self._get_system_prompt()}
+                ]
+                
+                # Add context if provided
+                if context:
+                    truncated_context = self._truncate_context(context)
+                    messages.append({"role": "assistant", "content": f"Previous context: {truncated_context}"})
+                
+                # Add user message
+                messages.append({"role": "user", "content": prompt})
+                
+                # Make the API call to Groq
+                try:
+                    completion = await asyncio.create_task(
+                        asyncio.to_thread(
+                            self.groq_client.chat.completions.create,
+                            model=self.groq_model,
+                            messages=messages,
+                            temperature=0.7,
+                            max_tokens=1024,
+                            top_p=1,
+                            stop=None,
+                            stream=False
+                        )
+                    )
+                    
+                    ai_response = completion.choices[0].message.content
+                    tokens_used = completion.usage.total_tokens if completion.usage else 0
+                    
+                    # Track successful response
+                    tracker.set_response_size(len(ai_response.encode('utf-8')))
+                    tracker.set_status(200)
+                    
+                    response_time = time.time() - start_time
+                    
+                    # Extract tasks from the AI response
+                    extracted_tasks = self._extract_tasks_from_response(ai_response)
+                    
+                    result = {
+                        "response": ai_response,
+                        "model": self.groq_model,
+                        "response_time": round(response_time, 3),
+                        "tokens_used": tokens_used,
+                        "status": "success",
+                        "tasks": extracted_tasks
+                    }
+                    
+                    logger.info(f"Groq API response generated successfully in {response_time:.3f}s, tokens: {tokens_used}, tasks extracted: {len(extracted_tasks)}")
+                    return result
+                    
+                except Exception as api_error:
+                    logger.error(f"Groq API error: {str(api_error)}")
+                    
+                    # Track API error
+                    tracker.set_status(500, str(api_error))
+                    
+                    # Fallback to a helpful error message
+                    ai_response = "I'm experiencing some technical difficulties connecting to my AI systems. Please try again in a moment, or check that your API credentials are properly configured."
+                    
+                    tracker.set_response_size(len(ai_response.encode('utf-8')))
+                    
+                    response_time = time.time() - start_time
+                    return {
+                        "response": ai_response,
+                        "model": self.groq_model,
+                        "response_time": round(response_time, 3),
+                        "tokens_used": 0,
+                        "status": "api_error",
+                        "error": str(api_error),
+                        "tasks": []
+                    }
+                
+            except Exception as e:
+                logger.error(f"Error generating AI response: {str(e)}", exc_info=True)
+                
+                # Track general error
+                tracker.set_status(500, str(e))
+                
+                error_response = "I apologize, but I'm experiencing technical difficulties. Please try again later."
+                tracker.set_response_size(len(error_response.encode('utf-8')))
+                
                 return {
-                    "response": ai_response,
+                    "response": error_response,
                     "model": self.groq_model,
-                    "response_time": round(response_time, 3),
-                    "tokens_used": len(prompt.split()) + len(ai_response.split()),
-                    "status": "placeholder",
+                    "response_time": 0,
+                    "tokens_used": 0,
+                    "status": "error",
+                    "error": str(e),
                     "tasks": []
                 }
+
+    def _determine_image_context(self, caption: str, original_task_type: str) -> str:
+        """Determine more specific image context based on caption content"""
+        caption_lower = caption.lower()
+        
+        # Check for meeting-related content
+        meeting_keywords = ['meeting', 'presentation', 'slide', 'whiteboard', 'projector', 'conference', 'discussion']
+        if any(keyword in caption_lower for keyword in meeting_keywords):
+            return "meeting"
+        
+        # Check for planning/organizational content
+        planning_keywords = ['calendar', 'schedule', 'plan', 'timeline', 'chart', 'graph', 'diagram', 'list', 'notes']
+        if any(keyword in caption_lower for keyword in planning_keywords):
+            return "planning"
+        
+        # Check for document content
+        document_keywords = ['document', 'paper', 'text', 'book', 'report', 'form', 'contract']
+        if any(keyword in caption_lower for keyword in document_keywords):
+            return "document"
+        
+        # Check for chart/data visualization
+        chart_keywords = ['chart', 'graph', 'data', 'statistics', 'numbers', 'percentage', 'bar', 'pie']
+        if any(keyword in caption_lower for keyword in chart_keywords):
+            return "chart"
+        
+        # Return original task type if no specific context detected
+        return original_task_type
+
+    def _extract_suggestions_from_response(self, response_text: str) -> List[Dict[str, Any]]:
+        """Extract structured suggestions from AI response"""
+        suggestions = []
+        
+        if not response_text:
+            return suggestions
+        
+        lines = response_text.split('\n')
+        current_category = "general"
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
             
-            # Prepare messages for the conversation
-            messages = [
-                {"role": "system", "content": self._get_system_prompt()}
+            # Detect category headers
+            if any(header in line.upper() for header in ['CONTENT ANALYSIS', 'ACTIONABLE TASKS', 'PRIORITIES', 'NEXT STEPS', 'ORGANIZATION']):
+                current_category = line.lower().replace(':', '').strip()
+                continue
+            elif any(header in line.upper() for header in ['DATA INSIGHTS', 'DECISION POINTS', 'MONITORING TASKS']):
+                current_category = line.lower().replace(':', '').strip()
+                continue
+            elif any(header in line.upper() for header in ['VISUAL CONTENT', 'WORK-RELATED ELEMENTS', 'ACTIONABLE INSIGHTS']):
+                current_category = line.lower().replace(':', '').strip()
+                continue
+            
+            # Extract numbered or bulleted suggestions
+            suggestion_patterns = [
+                r'^\d+\.\s*(.+)',  # 1. Suggestion
+                r'^[-*•]\s*(.+)',  # - Suggestion or * Suggestion
+                r'^(?:suggestion|recommendation|action)(?:\s*\d+)?[:\s]+(.+)',  # Action: suggestion
             ]
             
-            # Add context if provided
-            if context:
-                truncated_context = self._truncate_context(context)
-                messages.append({"role": "assistant", "content": f"Previous context: {truncated_context}"})
-            
-            # Add user message
-            messages.append({"role": "user", "content": prompt})
-            
-            # Make the API call to Groq
-            try:
-                completion = await asyncio.create_task(
-                    asyncio.to_thread(
-                        self.groq_client.chat.completions.create,
-                        model=self.groq_model,
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=1024,
-                        top_p=1,
-                        stop=None,
-                        stream=False
-                    )
-                )
-                
-                ai_response = completion.choices[0].message.content
-                tokens_used = completion.usage.total_tokens if completion.usage else 0
-                
-                response_time = time.time() - start_time
-                
-                # Extract tasks from the AI response
-                extracted_tasks = self._extract_tasks_from_response(ai_response)
-                
-                result = {
-                    "response": ai_response,
-                    "model": self.groq_model,
-                    "response_time": round(response_time, 3),
-                    "tokens_used": tokens_used,
-                    "status": "success",
-                    "tasks": extracted_tasks
-                }
-                
-                logger.info(f"Groq API response generated successfully in {response_time:.3f}s, tokens: {tokens_used}, tasks extracted: {len(extracted_tasks)}")
-                return result
-                
-            except Exception as api_error:
-                logger.error(f"Groq API error: {str(api_error)}")
-                # Fallback to a helpful error message
-                ai_response = "I'm experiencing some technical difficulties connecting to my AI systems. Please try again in a moment, or check that your API credentials are properly configured."
-                
-                response_time = time.time() - start_time
-                return {
-                    "response": ai_response,
-                    "model": self.groq_model,
-                    "response_time": round(response_time, 3),
-                    "tokens_used": 0,
-                    "status": "api_error",
-                    "error": str(api_error),
-                    "tasks": []
-                }
-            
-        except Exception as e:
-            logger.error(f"Error generating AI response: {str(e)}", exc_info=True)
-            return {
-                "response": "I apologize, but I'm experiencing technical difficulties. Please try again later.",
-                "model": self.groq_model,
-                "response_time": 0,
-                "tokens_used": 0,
-                "status": "error",
-                "error": str(e),
-                "tasks": []
-            }
-    
-    async def process_image(self, image_path: str, prompt: str = "Describe this image") -> Dict[str, Any]:
-        """
-        Process image using Hugging Face Vision API (placeholder implementation)
+            for pattern in suggestion_patterns:
+                import re
+                match = re.search(pattern, line, re.IGNORECASE)
+                if match:
+                    suggestion_text = match.group(1).strip()
+                    
+                    if len(suggestion_text) > 15:  # Filter out very short suggestions
+                        # Determine priority based on keywords
+                        priority = 'medium'
+                        if any(word in suggestion_text.lower() for word in ['urgent', 'immediately', 'asap', 'critical']):
+                            priority = 'high'
+                        elif any(word in suggestion_text.lower() for word in ['consider', 'eventually', 'when possible']):
+                            priority = 'low'
+                        
+                        suggestion = {
+                            'text': suggestion_text,
+                            'category': current_category,
+                            'priority': priority,
+                            'actionable': any(word in suggestion_text.lower() for word in ['create', 'schedule', 'review', 'update', 'contact', 'organize'])
+                        }
+                        suggestions.append(suggestion)
+                    break
         
-        Args:
-            image_path (str): Path to uploaded image
-            prompt (str): Optional prompt for image analysis
-            
-        Returns:
-            Dict[str, Any]: Image analysis result
-        """
-        try:
-            logger.info(f"Processing image: {image_path}")
-            start_time = time.time()
-            
-            # Simulate processing delay
-            await asyncio.sleep(1.0)
-            
-            # TODO: Replace with actual Hugging Face API call
-            # import requests
-            # headers = {"Authorization": f"Bearer {self.hf_api_key}"}
-            # with open(image_path, "rb") as f:
-            #     data = f.read()
-            # response = requests.post(HF_IMAGE_API_URL, headers=headers, data=data)
-            
-            # Placeholder response
-            analysis_result = f"Image analysis placeholder: This appears to be an uploaded image. Ready for integration with Hugging Face Vision APIs for detailed analysis."
-            
-            response_time = time.time() - start_time
-            
-            result = {
-                "analysis": analysis_result,
-                "confidence": 0.95,
-                "response_time": round(response_time, 3),
-                "status": "success"
-            }
-            
-            logger.info(f"Image processed successfully in {response_time:.3f}s")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error processing image: {str(e)}", exc_info=True)
-            return {
-                "analysis": "Unable to process image at this time.",
-                "confidence": 0.0,
-                "response_time": 0,
-                "status": "error",
-                "error": str(e)
-            }
-    
-    async def process_audio(self, audio_path: str) -> Dict[str, Any]:
-        """
-        Process audio using Hugging Face Speech-to-Text API (placeholder implementation)
+        return suggestions
+
+    def _add_chat_direction(self, response: str, content_type: str = "content") -> str:
+        """Add chat direction at the end of AI responses to guide users to further assistance"""
+        chat_directions = {
+            "image": "💬 **Need more help?** Use the Chat feature to ask me specific questions about this image, create tasks from these insights, or get personalized recommendations for your workflow!",
+            "audio": "💬 **Want to dive deeper?** Head over to the Chat section to discuss these transcription results, create action items, or get help organizing these insights into your task management system!",
+            "document": "💬 **Ready for next steps?** Visit the Chat feature to ask follow-up questions about this document, get help implementing these recommendations, or create a detailed action plan!",
+            "general": "💬 **Looking for more assistance?** Try the Chat feature to ask specific questions, get personalized task management advice, or explore how to implement these insights in your workflow!"
+        }
         
-        Args:
-            audio_path (str): Path to uploaded audio file
-            
-        Returns:
-            Dict[str, Any]: Audio transcription result
-        """
-        try:
-            logger.info(f"Processing audio: {audio_path}")
-            start_time = time.time()
-            
-            # Simulate processing delay
-            await asyncio.sleep(1.5)
-            
-            # TODO: Replace with actual Hugging Face API call
-            # Similar to image processing but for audio transcription
-            
-            # Placeholder response
-            transcription = "Audio transcription placeholder: Ready for integration with Hugging Face Speech-to-Text APIs."
-            
-            response_time = time.time() - start_time
-            
-            result = {
-                "transcription": transcription,
-                "confidence": 0.92,
-                "response_time": round(response_time, 3),
-                "status": "success"
-            }
-            
-            logger.info(f"Audio processed successfully in {response_time:.3f}s")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error processing audio: {str(e)}", exc_info=True)
-            return {
-                "transcription": "Unable to process audio at this time.",
-                "confidence": 0.0,
-                "response_time": 0,
-                "status": "error",
-                "error": str(e)
-            }
+        direction = chat_directions.get(content_type, chat_directions["general"])
+        
+        # Add some spacing and the direction
+        if response.strip():
+            return f"{response}\n\n---\n\n{direction}"
+        else:
+            return direction
 
 # Global AI service instance
 ai_service = AIService() 
