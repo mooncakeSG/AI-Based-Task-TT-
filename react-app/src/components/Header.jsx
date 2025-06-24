@@ -72,7 +72,7 @@ const Header = ({ currentPage, onNavigate, onAuthModalOpen }) => {
 
           {/* User Profile */}
           <div className="hidden md:block">
-            <UserProfile onAuthModalOpen={onAuthModalOpen} />
+            <UserProfile onAuthModalOpen={onAuthModalOpen} onNavigate={onNavigate} />
           </div>
 
           {/* Mobile Navigation */}
@@ -116,7 +116,7 @@ const Header = ({ currentPage, onNavigate, onAuthModalOpen }) => {
             
             {/* Mobile User Profile */}
             <div className="ml-4">
-              <UserProfile onAuthModalOpen={onAuthModalOpen} />
+              <UserProfile onAuthModalOpen={onAuthModalOpen} onNavigate={onNavigate} />
             </div>
           </div>
         </div>

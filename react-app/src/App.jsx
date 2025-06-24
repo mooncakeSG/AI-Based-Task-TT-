@@ -9,6 +9,8 @@ import AuthModal from './components/AuthModal';
 import Home from './pages/Home';
 import Upload from './pages/Upload';
 import About from './pages/About';
+import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 import { animations } from './styles/design-system';
 
 function App() {
@@ -37,6 +39,10 @@ function App() {
         return <Upload onNavigate={setCurrentPage} />;
       case 'about':
         return <About />;
+      case 'profile':
+        return <Profile />;
+      case 'settings':
+        return <Settings />;
       default:
         return <Home onNavigate={setCurrentPage} />;
     }

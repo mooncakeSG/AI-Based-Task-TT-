@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-const UserProfile = ({ onAuthModalOpen }) => {
+const UserProfile = ({ onAuthModalOpen, onNavigate }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const { 
     user, 
@@ -177,12 +177,14 @@ const UserProfile = ({ onAuthModalOpen }) => {
                   </button>
                 )}
 
-                <button
-                  onClick={() => {
-                    // TODO: Implement profile editing
+                <a
+                  href="/profile"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate && onNavigate('profile');
                     setIsDropdownOpen(false);
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 transition-colors"
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 transition-colors block"
                 >
                   <div className="flex items-center">
                     <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -190,14 +192,16 @@ const UserProfile = ({ onAuthModalOpen }) => {
                     </svg>
                     Edit Profile
                   </div>
-                </button>
+                </a>
 
-                <button
-                  onClick={() => {
-                    // TODO: Implement settings
+                <a
+                  href="/settings"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate && onNavigate('settings');
                     setIsDropdownOpen(false);
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 transition-colors"
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 transition-colors block"
                 >
                   <div className="flex items-center">
                     <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,7 +210,7 @@ const UserProfile = ({ onAuthModalOpen }) => {
                     </svg>
                     Settings
                   </div>
-                </button>
+                </a>
               </div>
 
               {/* Divider */}
