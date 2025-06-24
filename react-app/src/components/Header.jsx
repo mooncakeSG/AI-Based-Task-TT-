@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion';
 import { Home, MessageSquare, ListChecks, Upload, Menu, Sparkles } from 'lucide-react';
+import UserProfile from './UserProfile';
 import { animations } from '../styles/design-system';
 
-const Header = ({ currentPage, onNavigate }) => {
+const Header = ({ currentPage, onNavigate, onAuthModalOpen }) => {
   const navigationItems = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -69,6 +70,11 @@ const Header = ({ currentPage, onNavigate }) => {
             ))}
           </nav>
 
+          {/* User Profile */}
+          <div className="hidden md:block">
+            <UserProfile onAuthModalOpen={onAuthModalOpen} />
+          </div>
+
           {/* Mobile Navigation */}
           <div className="md:hidden">
             <motion.button
@@ -85,26 +91,33 @@ const Header = ({ currentPage, onNavigate }) => {
 
         {/* Mobile Navigation Menu */}
         <div className="md:hidden pb-4 pt-2">
-          <div className="flex space-x-1 overflow-x-auto">
-            {navigationItems.map((item) => (
-              <motion.button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={`
-                  flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                  ${currentPage === item.id
-                    ? 'text-blue-600 bg-blue-50/80 backdrop-blur-sm'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60 backdrop-blur-sm'
-                  }
-                `}
-                whileTap={{ scale: 0.95 }}
-              >
-                <div className="flex items-center gap-2">
-                  <item.icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </div>
-              </motion.button>
-            ))}
+          <div className="flex justify-between items-center">
+            <div className="flex space-x-1 overflow-x-auto">
+              {navigationItems.map((item) => (
+                <motion.button
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                  className={`
+                    flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200
+                    ${currentPage === item.id
+                      ? 'text-blue-600 bg-blue-50/80 backdrop-blur-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/60 backdrop-blur-sm'
+                    }
+                  `}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="flex items-center gap-2">
+                    <item.icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+            
+            {/* Mobile User Profile */}
+            <div className="ml-4">
+              <UserProfile onAuthModalOpen={onAuthModalOpen} />
+            </div>
           </div>
         </div>
       </div>

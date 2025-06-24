@@ -3,12 +3,13 @@ import time
 import os
 import aiofiles
 import json
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from services.ai import ai_service
 from services.postgres_db import database_service
+from services.auth import get_current_user, extract_user_id_from_request
 from config.settings import settings, get_allowed_file_types
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,11 @@ class MultimodalResponse(BaseModel):
     timestamp: float
 
 @router.get("/tasks", response_model=TasksResponse)
-async def get_tasks(user_id: Optional[str] = None):
+async def get_tasks(
+    request: Request,
+    user_id: Optional[str] = None,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
     """
     Get all saved tasks
     
@@ -85,10 +90,20 @@ async def get_tasks(user_id: Optional[str] = None):
         TasksResponse: List of tasks with metadata
     """
     try:
-        logger.info(f"Fetching tasks for user: {user_id or 'all users'}")
+        # Determine user ID - prioritize authenticated user, then URL parameter
+        effective_user_id = None
+        if current_user:
+            effective_user_id = current_user.get("id")
+        elif user_id:
+            effective_user_id = user_id
+        else:
+            # Try to extract from request headers for backwards compatibility
+            effective_user_id = extract_user_id_from_request(request)
+        
+        logger.info(f"Fetching tasks for user: {effective_user_id or 'all users'}")
         
         # Use Supabase database service
-        tasks_data = await database_service.get_tasks(user_id)
+        tasks_data = await database_service.get_tasks(effective_user_id)
         logger.info(f"Retrieved {len(tasks_data)} tasks from database")
         
         # Convert to TaskModel objects safely
@@ -134,7 +149,11 @@ async def get_tasks(user_id: Optional[str] = None):
         )
 
 @router.post("/tasks", response_model=TaskModel)
-async def create_task(task: TaskModel):
+async def create_task(
+    task: TaskModel,
+    request: Request,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
     """
     Create a new task
     
@@ -149,6 +168,13 @@ async def create_task(task: TaskModel):
         
         # Convert to dict for database
         task_data = task.model_dump(exclude_none=True)
+        
+        # Set user ID if authenticated
+        if current_user:
+            task_data["user_id"] = current_user.get("id")
+        elif not task_data.get("user_id"):
+            # Try to extract from request headers for backwards compatibility
+            task_data["user_id"] = extract_user_id_from_request(request)
         
         # Use Supabase database service
         created_task = await database_service.create_task(task_data)
@@ -261,7 +287,11 @@ async def delete_task(task_id: int):
         )
 
 @router.delete("/tasks")
-async def clear_tasks(user_id: Optional[str] = None):
+async def clear_tasks(
+    request: Request,
+    user_id: Optional[str] = None,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
     """
     Clear all tasks
     
@@ -272,10 +302,20 @@ async def clear_tasks(user_id: Optional[str] = None):
         dict: Success message
     """
     try:
-        logger.info(f"Clearing tasks for user: {user_id or 'all users'}")
+        # Determine user ID - prioritize authenticated user, then URL parameter
+        effective_user_id = None
+        if current_user:
+            effective_user_id = current_user.get("id")
+        elif user_id:
+            effective_user_id = user_id
+        else:
+            # Try to extract from request headers for backwards compatibility
+            effective_user_id = extract_user_id_from_request(request)
+        
+        logger.info(f"Clearing tasks for user: {effective_user_id or 'all users'}")
         
         # Use Supabase database service
-        cleared_count = await database_service.clear_all_tasks(user_id)
+        cleared_count = await database_service.clear_all_tasks(effective_user_id)
         
         return {
             "message": f"Successfully cleared {cleared_count} tasks",

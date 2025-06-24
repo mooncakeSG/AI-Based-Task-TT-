@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import Header from './Header';
 import { animations } from '../styles/design-system';
 
-const Layout = ({ children, currentPage, onNavigate }) => {
+const Layout = ({ children, currentPage, onNavigate, onAuthModalOpen }) => {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Background Image Layer */}
@@ -30,7 +30,11 @@ const Layout = ({ children, currentPage, onNavigate }) => {
 
       {/* Main Content Container */}
       <div className="relative z-10 min-h-screen flex flex-col">
-        <Header currentPage={currentPage} onNavigate={onNavigate} />
+        <Header 
+          currentPage={currentPage} 
+          onNavigate={onNavigate} 
+          onAuthModalOpen={onAuthModalOpen}
+        />
         
         <motion.main 
           className="flex-1 p-4 md:p-6 lg:p-8"
