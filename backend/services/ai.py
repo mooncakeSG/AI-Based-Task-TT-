@@ -6,7 +6,12 @@ import os
 from typing import Dict, Any, Optional, List
 import httpx
 from groq import Groq
-from PIL import Image
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
 import io
 from config.settings import settings
 from .monitoring import track_groq_call, track_huggingface_call
@@ -173,6 +178,9 @@ Remember: You're here to make users more productive and organized. Always think 
     
     def _encode_image_to_base64(self, image_path: str) -> str:
         """Convert image file to base64 string"""
+        if not PIL_AVAILABLE:
+            raise ImportError("PIL (Pillow) is not available. Please install with: pip install Pillow")
+        
         try:
             # Optimize image size for API
             with Image.open(image_path) as img:
