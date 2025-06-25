@@ -10,26 +10,22 @@ requests==2.31.0
 PyJWT==2.8.0
 email-validator==2.1.0
 Pillow==10.1.0
-supabase-py==1.0.3
+supabase-py==1.0.2
 asyncpg==0.29.0
 sqlalchemy==2.0.23
 alembic==1.13.1
 psycopg2-binary==2.9.9
 asyncio-mqtt==0.13.0
 loguru==0.7.2
+gunicorn==21.2.0
 
 # Lightweight ML dependencies for deployment
 huggingface-hub==0.19.4
 transformers==4.36.2
 
-# Testing dependencies
-pytest==8.0.2
-pytest-asyncio==0.24.0
-pytest-cov==5.0.0
-httpx==0.26.0
-
 # Monitoring and metrics
 dataclasses-json==0.6.3
 
-# Note: torch and torchvision removed for deployment optimization
-# They can be installed on demand if needed for specific AI features 
+# Production optimized - removed testing packages
+# Fixed: Downgraded supabase-py to 1.0.2 (stable version without setup.py issues)
+# Added: gunicorn for production WSGI serving 
