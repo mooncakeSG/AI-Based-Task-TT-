@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: intelliassist-backend
+    env: python
+    region: oregon
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && python main.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: "https://intelliassist-frontend.onrender.com,http://localhost:3000"
+      - key: SUPABASE_URL
+        fromGroup: supabase
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: supabase
+      - key: SUPABASE_ANON_KEY
+        fromGroup: supabase
+      - key: HUGGINGFACE_API_KEY
+        fromGroup: ai-keys
+      - key: OPENAI_API_KEY
+        fromGroup: ai-keys
+    healthCheckPath: /health
+    
+  - type: static
+    name: intelliassist-frontend
+    buildCommand: cd react-app && npm install && npm run build
+    staticPublishPath: react-app/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://intelliassist-backend.onrender.com"
+      - key: VITE_SUPABASE_URL
+        fromGroup: supabase
+      - key: VITE_SUPABASE_ANON_KEY
+        fromGroup: supabase
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html 

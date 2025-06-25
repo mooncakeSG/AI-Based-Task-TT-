@@ -8,6 +8,7 @@ import VoiceRecorder from './VoiceRecorder';
 import AIResponseDisplay from './AIResponseDisplay';
 import { animations } from '../styles/design-system';
 import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 
 // Component for displaying extracted tasks with save options
 const TaskSavePrompt = ({ tasks, onSave, onDismiss }) => {
@@ -185,15 +186,10 @@ const ChatBox = ({ className = "" }) => {
 
       // Choose endpoint based on input type
       const isMultimodal = attachedFiles.length > 0;
-      const endpoint = isMultimodal ? 'http://localhost:8000/api/v1/multimodal' : 'http://localhost:8000/api/v1/chat';
       
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData),
-      });
+      const response = isMultimodal 
+        ? await api.multimodal(requestData)
+        : await api.chat(requestData);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -318,25 +314,17 @@ const ChatBox = ({ className = "" }) => {
         
         // Try to extract and save tasks from the AI response
         try {
-          const taskExtractionResponse = await fetch('http://localhost:8000/api/v1/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              message: `Extract any tasks from this transcribed voice message: "${transcriptionText}"`
-            }),
+          const taskExtractionResponse = await api.chat({
+            message: `Extract any tasks from this transcribed voice message: "${transcriptionText}"`
           });
           
-          if (taskExtractionResponse.ok) {
-            const result = await taskExtractionResponse.json();
-            if (result.tasks && result.tasks.length > 0) {
-              console.log('🧠 Tasks extracted from voice message:', result.tasks);
-              setPendingTasks(prev => ({
-                ...prev,
-                [aiMessageId]: result.tasks
-              }));
-            }
+          const result = await taskExtractionResponse.json();
+          if (result.tasks && result.tasks.length > 0) {
+            console.log('🧠 Tasks extracted from voice message:', result.tasks);
+            setPendingTasks(prev => ({
+              ...prev,
+              [aiMessageId]: result.tasks
+            }));
           }
         } catch (error) {
           console.error('Failed to extract tasks from voice message:', error);

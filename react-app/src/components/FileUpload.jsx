@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { api } from '../lib/api';
 
 const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize = 5 * 1024 * 1024 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -69,13 +70,11 @@ const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize =
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await api.uploadFile(formData);
 
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
       }
 
       const result = await response.json();

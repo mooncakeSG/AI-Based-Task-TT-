@@ -4,6 +4,7 @@ import { RefreshCw, Trash2, CheckCircle, Clock, AlertCircle, ClipboardList, Tag,
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { animations } from '../styles/design-system';
+import { api } from '../lib/api';
 
 const SavedTasks = ({ className = "" }) => {
   const [tasks, setTasks] = useState([]);
@@ -18,20 +19,8 @@ const SavedTasks = ({ className = "" }) => {
     setError(null);
     
     try {
-      console.log('Making fetch request to:', 'http://localhost:8000/api/v1/tasks');
-      
-      const response = await fetch('http://localhost:8000/api/v1/tasks', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
+      const response = await api.getTasks();
       console.log('Response received:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
       
       const data = await response.json();
       console.log('Data received:', data);
@@ -57,16 +46,7 @@ const SavedTasks = ({ className = "" }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await api.deleteTask(taskId);
       
       // Remove task from local state
       setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
@@ -89,19 +69,7 @@ const SavedTasks = ({ className = "" }) => {
     const newStatus = statusCycle[currentStatus] || 'pending';
     
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: newStatus
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await api.updateTask(taskId, { status: newStatus });
       
       // Update task in local state
       setTasks(prevTasks => 
@@ -122,18 +90,7 @@ const SavedTasks = ({ className = "" }) => {
 
   const updateTask = async (taskId, updates) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
+      const response = await api.updateTask(taskId, updates);
       const updatedTask = await response.json();
       
       // Update task in local state
@@ -160,16 +117,7 @@ const SavedTasks = ({ className = "" }) => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/tasks', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await api.clearAllTasks();
       
       setTasks([]);
       toast.success('All tasks cleared successfully');

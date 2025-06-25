@@ -4,6 +4,7 @@ import { Upload, CheckCircle, X, Plus, FileText, Image, Music, File, Loader } fr
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { animations } from '../styles/design-system';
+import { api } from '../lib/api';
 
 const UploadBox = ({ onUploadComplete, className = "" }) => {
   const [file, setFile] = useState(null);
@@ -99,7 +100,7 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await axios.post('http://localhost:8000/api/v1/upload/file', formData, {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/upload/file`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

@@ -1,4 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Mic, MicOff, Square, Play, Pause, Upload, X, Loader, Volume2, VolumeX } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
+import { api } from '../lib/api';
 
 const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -82,7 +86,7 @@ const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
         stream.getTracks().forEach(track => track.stop());
         
         // Upload the audio
-        await uploadAudio(audioBlob);
+        await uploadAudio(audioBlob, `recording_${Date.now()}.webm`);
       };
 
       mediaRecorderRef.current.start(1000); // Collect data every second
@@ -130,25 +134,23 @@ const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
     }
   };
 
-  const uploadAudio = async (audioBlob) => {
+  const uploadAudio = async (audioBlob, filename) => {
     setUploading(true);
 
     try {
       const formData = new FormData();
-      const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, {
+      const audioFile = new File([audioBlob], filename, {
         type: 'audio/webm'
       });
       formData.append('file', audioFile);
 
-      const response = await fetch('http://localhost:8000/api/v1/upload/audio', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const response = await api.uploadAudio(formData);
+      
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
       }
-
+      
       const result = await response.json();
       
       console.log('🎤 Audio processing result:', result);
@@ -157,7 +159,7 @@ const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
       
       const audioInfo = {
         id: result.processing_details?.file_id || `audio_${Date.now()}`,
-        name: result.processing_details?.filename || `recording_${Date.now()}.webm`,
+        name: result.processing_details?.filename || filename,
         type: 'audio/webm',
         size: audioFile.size,
         duration: recordingTime,

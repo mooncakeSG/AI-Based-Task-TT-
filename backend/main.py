@@ -150,12 +150,22 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Health check route
+# Health check routes
 @app.get("/ping")
-async def health_check():
+async def ping():
     """Health check endpoint"""
     return {
         "status": "ok",
+        "app": settings.app_name,
+        "version": settings.app_version,
+        "timestamp": time.time()
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render"""
+    return {
+        "status": "healthy",
         "app": settings.app_name,
         "version": settings.app_version,
         "timestamp": time.time()
