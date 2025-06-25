@@ -3,7 +3,7 @@ services:
     name: intelliassist-backend
     env: python
     region: oregon
-    buildCommand: pip install -r backend/requirements-render.txt
+    buildCommand: pip install -r backend/requirements-minimal-render.txt
     startCommand: cd backend && python main.py
     envVars:
       - key: PORT
