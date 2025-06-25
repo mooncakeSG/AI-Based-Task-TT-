@@ -1,0 +1,39 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+aiofiles>=23.2.1
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv==1.0.0
+groq==0.4.1
+requests==2.31.0
+PyJWT==2.8.0
+email-validator==2.1.0
+Pillow==10.1.0
+supabase==2.3.1
+asyncpg>=0.29.0
+sqlalchemy==2.0.23
+alembic>=1.13.1
+psycopg2-binary==2.9.9
+asyncio-mqtt>=0.13.0
+loguru>=0.7.2
+
+# Lightweight ML dependencies for deployment
+huggingface-hub>=0.19.0
+transformers>=4.36.0
+
+# Database dependencies
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# Testing dependencies
+pytest==8.0.2
+pytest-asyncio==0.24.0
+pytest-cov==5.0.0
+httpx==0.26.0
+
+# Monitoring and metrics
+dataclasses-json==0.6.3
+
+# Note: torch and torchvision removed for deployment optimization
+# They can be installed on demand if needed for specific AI features 

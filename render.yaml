@@ -12,7 +12,7 @@ services:
     env: python
     plan: free
     region: oregon
-    buildCommand: cd backend && pip install -r requirements.txt
+    buildCommand: cd backend && pip install --upgrade pip setuptools wheel && pip install -r requirements-render.txt --no-cache-dir
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /ping
     envVars:
@@ -25,6 +25,10 @@ services:
       - key: API_PORT
         sync: false
         value: $PORT
+      - key: PIP_NO_CACHE_DIR
+        value: 1
+      - key: PIP_DISABLE_PIP_VERSION_CHECK
+        value: 1
       - key: DATABASE_URL
         fromDatabase:
           name: intelliassist-database
