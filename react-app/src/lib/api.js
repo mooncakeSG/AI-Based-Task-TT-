@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'https://intelliassist-backend-9tusjg0z0-mooncakesgs-projects.vercel.app/api/v1';
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'https://intelliassist-bxl3.onrender.com'}/api/v1`;
 
 console.log('API Base URL:', API_BASE_URL);
 
