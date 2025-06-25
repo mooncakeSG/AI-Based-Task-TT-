@@ -19,10 +19,11 @@ httpx>=0.26.0,<0.29
 supabase==2.16.0
 
 # AI API
-groq==0.4.1
+groq>=0.4.1,<1.0.0
 
 # Authentication
 PyJWT>=2.10.1,<3.0.0
 
 # Additional essentials found in imports
-typing-extensions>=4.0.0 
+typing-extensions>=4.0.0
+email-validator>=2.0.0 
