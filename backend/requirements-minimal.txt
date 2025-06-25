@@ -14,14 +14,8 @@ asyncpg==0.29.0
 sqlalchemy==2.0.23
 alembic==1.13.1
 psycopg2-binary==2.9.9
-asyncio-mqtt==0.13.0
 loguru==0.7.2
 gunicorn==21.2.0
-dataclasses-json==0.6.3
 
-# Temporarily removed problematic packages:
-# - Pillow (causes wheel building issues)
-# - huggingface-hub (large, complex build)
-# - transformers (large, complex build)
-# 
-# Get basic deployment working first, add image processing later 
+# Minimal requirements - no image processing or heavy ML packages
+# This should build without wheel compilation issues 
