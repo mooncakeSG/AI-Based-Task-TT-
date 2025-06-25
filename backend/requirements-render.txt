@@ -8,24 +8,24 @@ aiofiles==23.2.1
 pydantic==1.10.17
 python-dotenv==1.0.0
 
-# AI APIs (3+ APIs requirement)
+# AI APIs (Free Tier Focus)
 groq==0.4.1
-openai==1.3.7
-anthropic==0.8.1
-google-generativeai==0.3.2
+
+# Free AI Services (No API Keys Required)
+huggingface-hub==0.20.1
 
 # Vision Processing (Python 3.13 compatible with pre-built wheels)
 Pillow==11.2.1
 
-# Speech Processing (lightweight alternatives)
+# Speech Processing (free alternatives)
 speechrecognition==3.10.0
 gtts==2.4.0
 
 # Data Processing and Analytics
-pandas==2.1.4
+pandas==2.2.3
 numpy==1.25.2
 
-# RAG and Vector Database (lightweight alternatives)
+# RAG and Vector Database (free alternatives)
 faiss-cpu==1.7.4
 langchain-core==0.1.0
 
