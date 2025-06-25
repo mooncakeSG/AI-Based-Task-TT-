@@ -23,7 +23,7 @@ gtts==2.4.0
 
 # Data Processing and Analytics
 pandas==2.2.3
-numpy==1.25.2
+numpy==2.0.0
 
 # RAG and Vector Database (free alternatives)
 faiss-cpu==1.7.4
