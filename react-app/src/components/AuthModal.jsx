@@ -148,8 +148,15 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'signin' }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Enhanced Backdrop with Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-indigo-900/80 to-purple-900/80 backdrop-blur-md" onClick={handleClose}></div>
+      {/* Background with bg-pattern.jpg */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat" 
+        style={{ backgroundImage: 'url(/bg-pattern.jpg)' }}
+        onClick={handleClose}
+      >
+        {/* Dark overlay for better contrast */}
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+      </div>
       
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">

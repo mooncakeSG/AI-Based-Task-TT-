@@ -200,38 +200,111 @@ const Home = ({ onNavigate }) => {
         </div>
       </motion.div>
 
-      {/* CTA Section */}
+      {/* Enhanced CTA Section */}
       <motion.div 
-        className="text-center bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl p-8 md:p-12 text-white"
+        className="relative text-center bg-gradient-to-br from-blue-500 via-purple-600 to-pink-500 rounded-3xl p-10 md:p-16 text-white shadow-2xl overflow-hidden"
         variants={animations.fadeIn}
         initial="initial"
         animate="animate"
+        style={{
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+        }}
       >
-        <div className="space-y-6">
+        {/* Animated Background Pattern */}
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-white/10 rounded-full blur-xl animate-pulse"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-white/10 rounded-full blur-xl animate-pulse delay-1000"></div>
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/5 rounded-full blur-2xl animate-pulse delay-500"></div>
+        </div>
+
+        <div className="relative z-10 space-y-8">
+          {/* Enhanced Icon with Circular Background */}
           <div className="flex justify-center">
             <motion.div 
-              className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center"
-              whileHover={{ scale: 1.1, rotate: 5 }}
-              transition={{ duration: 0.3 }}
+              className="relative w-20 h-20 bg-gradient-to-br from-white/30 to-white/10 backdrop-blur-lg rounded-full flex items-center justify-center border border-white/20"
+              whileHover={{ 
+                scale: 1.15, 
+                rotate: 10,
+                boxShadow: "0 0 30px rgba(255, 255, 255, 0.3)"
+              }}
+              transition={{ duration: 0.4, type: "spring", stiffness: 300 }}
             >
-              <Sparkles className="w-8 h-8 text-white" />
+              <motion.div
+                animate={{ 
+                  rotate: [0, 5, -5, 0],
+                  scale: [1, 1.1, 1]
+                }}
+                transition={{ 
+                  duration: 3,
+                  repeat: Infinity,
+                  repeatType: "reverse"
+                }}
+              >
+                <Sparkles className="w-10 h-10 text-white drop-shadow-lg" />
+              </motion.div>
+              
+              {/* Glow Effect */}
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
             </motion.div>
           </div>
-          <div>
-            <h2 className="text-3xl font-bold mb-4">Ready to Get Started?</h2>
-            <p className="text-blue-100 max-w-2xl mx-auto mb-8">
+
+          {/* Enhanced Typography */}
+          <div className="space-y-4">
+            <motion.h2 
+              className="text-4xl md:text-5xl font-semibold mb-6 leading-tight"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              Ready to Get Started?
+            </motion.h2>
+            <motion.p 
+              className="text-lg text-white/90 max-w-2xl mx-auto leading-relaxed font-light"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
               Join thousands of users who have transformed their productivity with AI assistance.
-            </p>
+            </motion.p>
           </div>
-          <motion.button
-            onClick={() => onNavigate('chat')}
-            className="inline-flex items-center gap-3 px-8 py-4 bg-white text-blue-600 rounded-2xl font-semibold text-lg shadow-xl hover:shadow-2xl hover:bg-gray-50 transition-all duration-300"
-            whileHover={{ scale: 1.05, y: -2 }}
-            whileTap={{ scale: 0.95 }}
+
+          {/* Enhanced Call-to-Action Button */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
           >
-            <MessageCircle className="w-6 h-6" />
-            Start Your AI Journey
-          </motion.button>
+            <motion.button
+              onClick={() => onNavigate('chat')}
+              className="group relative inline-flex items-center gap-3 px-10 py-5 bg-white text-blue-600 rounded-2xl font-semibold text-lg shadow-2xl hover:shadow-[0_20px_40px_rgba(0,0,0,0.3)] transition-all duration-500 overflow-hidden"
+              whileHover={{ 
+                scale: 1.08, 
+                y: -3,
+                boxShadow: "0 25px 50px rgba(0, 0, 0, 0.3)"
+              }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {/* Button Background Gradient on Hover */}
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-purple-50 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              
+              {/* Icon with Animation */}
+              <motion.div
+                className="relative z-10"
+                whileHover={{ x: 3 }}
+                transition={{ duration: 0.3 }}
+              >
+                <MessageCircle className="w-7 h-7" />
+              </motion.div>
+              
+              {/* Text with Color Transition */}
+              <span className="relative z-10 group-hover:text-purple-600 transition-colors duration-300">
+                Unlock AI Superpowers
+              </span>
+
+              {/* Subtle Glow Border */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-sm"></div>
+            </motion.button>
+          </motion.div>
         </div>
       </motion.div>
     </div>
