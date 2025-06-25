@@ -1,100 +1,87 @@
 #!/usr/bin/env python3
 """
-IntelliAssist.AI Backend Setup Script
-Helps configure environment variables and start the development server.
+IntelliAssist.AI Backend Package Setup
 """
 
 import os
-import sys
-import shutil
+import re
 from pathlib import Path
+from setuptools import setup, find_packages
 
-def create_env_file():
-    """Create .env file from the example template"""
-    env_example = Path("env.example")
-    env_file = Path(".env")
+def get_version():
+    """Read version from __init__.py"""
+    init_file = Path(__file__).parent / "__init__.py"
+    if not init_file.exists():
+        return "1.0.0"
     
-    if env_file.exists():
-        print("✅ .env file already exists")
-        return True
-    
-    if not env_example.exists():
-        print("❌ env.example file not found")
-        return False
-    
-    try:
-        shutil.copy(env_example, env_file)
-        print("✅ Created .env file from env.example")
-        print("📝 Please edit .env file to add your API keys:")
-        print("   - GROQ_API_KEY: Get from https://console.groq.com/")
-        print("   - HF_API_KEY: Get from https://huggingface.co/settings/tokens")
-        return True
-    except Exception as e:
-        print(f"❌ Failed to create .env file: {e}")
-        return False
+    content = init_file.read_text()
+    version_match = re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', content, re.MULTILINE)
+    if version_match:
+        return version_match.group(1)
+    return "1.0.0"
 
-def check_dependencies():
-    """Check if required dependencies are installed"""
-    try:
-        import fastapi
-        import uvicorn
-        import pydantic
-        print("✅ Core dependencies are installed")
-        return True
-    except ImportError as e:
-        print(f"❌ Missing dependencies: {e}")
-        print("💡 Run: pip install -r requirements.txt")
-        return False
+def get_requirements():
+    """Read requirements from requirements.txt"""
+    requirements_file = Path(__file__).parent / "requirements.txt"
+    if not requirements_file.exists():
+        return []
+    
+    requirements = []
+    with open(requirements_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                requirements.append(line)
+    return requirements
 
-def create_upload_directory():
-    """Create uploads directory if it doesn't exist"""
-    upload_dir = Path("uploads")
-    try:
-        upload_dir.mkdir(exist_ok=True)
-        print("✅ Upload directory created/verified")
-        return True
-    except Exception as e:
-        print(f"❌ Failed to create upload directory: {e}")
-        return False
+def get_long_description():
+    """Read long description from README.md"""
+    readme_file = Path(__file__).parent / "README.md"
+    if readme_file.exists():
+        return readme_file.read_text(encoding='utf-8')
+    return "IntelliAssist.AI Backend - AI-powered task management and assistance"
 
-def main():
-    """Main setup function"""
-    print("🚀 IntelliAssist.AI Backend Setup")
-    print("=" * 40)
-    
-    # Check Python version
-    if sys.version_info < (3, 8):
-        print("❌ Python 3.8+ is required")
-        sys.exit(1)
-    print(f"✅ Python {sys.version_info.major}.{sys.version_info.minor} detected")
-    
-    # Check if we're in the right directory
-    if not Path("main.py").exists():
-        print("❌ Please run this script from the backend directory")
-        sys.exit(1)
-    
-    success = True
-    
-    # Setup steps
-    success &= check_dependencies()
-    success &= create_env_file()
-    success &= create_upload_directory()
-    
-    print("\n" + "=" * 40)
-    if success:
-        print("✅ Setup completed successfully!")
-        print("\n🚀 Next steps:")
-        print("1. Edit .env file with your API keys")
-        print("2. Run: python main.py")
-        print("3. Open: http://localhost:8000/docs")
-        print("\n📚 API Endpoints:")
-        print("- Health: GET /ping")
-        print("- Chat: POST /api/v1/chat")
-        print("- Upload: POST /api/v1/upload")
-    else:
-        print("❌ Setup encountered some issues")
-        print("Please fix the issues above and run setup again")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main() 
+setup(
+    name="intelliassist-backend",
+    version=get_version(),
+    author="IntelliAssist.AI Team",
+    author_email="team@intelliassist.ai",
+    description="AI-powered task management and assistance backend",
+    long_description=get_long_description(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/yourusername/AI-Based-Task-TT",
+    packages=find_packages(),
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+    ],
+    python_requires=">=3.8",
+    install_requires=get_requirements(),
+    extras_require={
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.21.0",
+            "black>=22.0.0",
+            "flake8>=4.0.0",
+            "mypy>=0.900",
+        ],
+    },
+    entry_points={
+        "console_scripts": [
+            "intelliassist-backend=main:app",
+        ],
+    },
+    include_package_data=True,
+    package_data={
+        "": ["*.sql", "*.env.example", "*.md"],
+    },
+) 
