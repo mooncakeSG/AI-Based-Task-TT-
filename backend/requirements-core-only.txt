@@ -5,8 +5,8 @@ python-multipart==0.0.6
 aiofiles==23.2.1
 
 # Pydantic and Settings (CRITICAL - was missing!)
-pydantic>=1.10.17,<2.0.0
-pydantic-settings>=2.0.0
+pydantic>=2.7.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
 
 # Environment Management
 python-dotenv==1.0.0
