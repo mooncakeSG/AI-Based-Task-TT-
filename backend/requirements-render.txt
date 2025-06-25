@@ -5,7 +5,7 @@ python-multipart==0.0.6
 aiofiles==23.2.1
 
 # Data Validation and Environment
-pydantic==1.10.17
+pydantic>=1.10.17,<2.0.0
 python-dotenv==1.0.0
 
 # AI APIs (Free Tier Focus)
@@ -31,7 +31,7 @@ langchain-core==0.1.0
 
 # HTTP Clients and Database
 requests==2.31.0
-httpx==0.25.2
+httpx>=0.26.0,<0.29
 asyncpg==0.30.0
 supabase==2.16.0
 
