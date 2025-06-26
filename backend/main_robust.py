@@ -1,4 +1,4 @@
-# Version 3.5 - Standard Starlette CORSMiddleware with proper configuration
+# Version 3.6 - DEBUG: Wildcard CORS to isolate the issue
 import logging
 import sys
 import time
@@ -48,6 +48,9 @@ class EnvConfig:
         
         # CORS origins (explicit domains work better than wildcards)
         self.CORS_ORIGINS = [
+            # Primary Vercel domain
+            "https://intelliassist-frontend.vercel.app",
+            # Deployment-specific Vercel URLs
             "https://intelliassist-frontend-idaidfoq4-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-9pniapdi0-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-mjr0irfwc-mooncakesgs-projects.vercel.app",
@@ -63,6 +66,10 @@ class EnvConfig:
                 "http://localhost:3000",
                 "http://127.0.0.1:3000"
             ])
+        
+        # TEMPORARY DEBUG: Add wildcard to test if CORS is the issue
+        # TODO: Remove this in production
+        self.CORS_ORIGINS.append("*")
         
         # Validate critical environment variables
         self._validate_env_vars()
@@ -214,7 +221,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False,  # Temporarily disabled for wildcard debugging
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
     expose_headers=["Content-Disposition"],
