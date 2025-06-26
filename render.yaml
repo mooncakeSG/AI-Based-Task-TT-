@@ -3,8 +3,8 @@ services:
     name: intelliassist-backend
     env: python
     region: oregon
-    buildCommand: pip install -r backend/requirements-minimal-test.txt
-    startCommand: cd backend && python -m uvicorn main_simple:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r backend/requirements-minimal-render.txt
+    startCommand: cd backend && python -m uvicorn main_production:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PORT
         value: 10000

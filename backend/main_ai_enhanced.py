@@ -82,6 +82,34 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
+# Import AI service for enhanced features
+try:
+    from services.ai import ai_service
+    logger.info("✅ AI service imported successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ AI service import failed: {e}")
+    ai_service = None
+
+def safe_fallback_response(file_type: str, filename: str, content_hint: str = None):
+    """Safely generate fallback response, with or without AI service"""
+    if ai_service:
+        return ai_service._generate_fallback_response(file_type, filename, content_hint)
+    else:
+        # Basic fallback if AI service is not available
+        if file_type == "image":
+            return analyze_image_content(filename)
+        elif file_type == "text":
+            return analyze_document_content(filename)
+        elif file_type == "pdf":
+            return analyze_document_content(filename)
+        else:
+            return {
+                "analysis": f"File '{filename}' uploaded successfully.",
+                "tasks": [{"title": f"Review {filename}", "description": f"Process {filename}", "priority": "medium", "category": "general", "status": "pending"}],
+                "suggestions": ["Review file content"],
+                "ai_processed": False
+            }
+
 # Initialize AI services
 groq_client = None
 supabase_client = None
@@ -860,15 +888,13 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
                         "model_used": ai_result.get("model_used", "AI Vision"),
                         "ai_processed": True
                     }
-                else:
-                    # Fallback to enhanced filename analysis
-                    analysis = ai_service._generate_fallback_response("image", file.filename)
-                    analysis["ai_processed"] = False
+                    else:
+                        # Fallback to enhanced filename analysis
+                        analysis = safe_fallback_response("image", file.filename)
             except Exception as e:
                 logger.error(f"AI image processing failed: {e}")
                 # Fallback to enhanced filename analysis
-                analysis = ai_service._generate_fallback_response("image", file.filename)
-                analysis["ai_processed"] = False
+                analysis = safe_fallback_response("image", file.filename)
         elif file.content_type and file.content_type.startswith("audio/"):
             analysis = await analyze_audio_content(file.filename, str(file_path))
         else:
@@ -915,15 +941,15 @@ Focus on actionable, implementable recommendations for task management."""
                         }
                         
                     except UnicodeDecodeError:
-                        analysis = ai_service._generate_fallback_response("text", file.filename, "encoding_error")
+                        analysis = safe_fallback_response("text", file.filename, "encoding_error")
                         analysis["ai_processed"] = False
                 else:
                     # For other document types, use enhanced fallback based on filename/extension
                     file_ext = Path(file.filename).suffix.lower()
                     if file_ext == '.pdf':
-                        analysis = ai_service._generate_fallback_response("pdf", file.filename)
+                        analysis = safe_fallback_response("pdf", file.filename)
                     elif file_ext in ['.doc', '.docx']:
-                        analysis = ai_service._generate_fallback_response("pdf", file.filename, "word_document")
+                        analysis = safe_fallback_response("pdf", file.filename, "word_document")
                     elif file_ext in ['.txt', '.md']:
                         # Try to read text files
                         try:
@@ -950,16 +976,15 @@ Provide specific, actionable recommendations for task management and productivit
                             }
                         except Exception as e:
                             logger.error(f"Text processing failed: {e}")
-                            analysis = ai_service._generate_fallback_response("text", file.filename)
+                            analysis = safe_fallback_response("text", file.filename)
                             analysis["ai_processed"] = False
                     else:
-                        analysis = ai_service._generate_fallback_response("generic", file.filename)
+                        analysis = safe_fallback_response("generic", file.filename)
                         analysis["ai_processed"] = False
                         
             except Exception as e:
                 logger.error(f"Document processing failed: {e}")
-                analysis = ai_service._generate_fallback_response("generic", file.filename)
-                analysis["ai_processed"] = False
+                analysis = safe_fallback_response("generic", file.filename)
         
         response_message = f"File '{file.filename}' uploaded and analyzed successfully!"
         

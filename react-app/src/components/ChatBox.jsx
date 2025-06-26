@@ -382,39 +382,52 @@ const ChatBox = ({ className = "" }) => {
   const saveTasks = async (tasks) => {
     if (!tasks || tasks.length === 0) return;
     
-    console.log('🔧 Saving extracted tasks to Supabase:', tasks);
+    console.log('🔧 Saving extracted tasks via API:', tasks);
     
     try {
+      let successCount = 0;
+      let errorCount = 0;
+      
       for (const task of tasks) {
         const taskData = {
-          summary: task.summary || task.title,
+          title: task.summary || task.title,
+          description: task.description || `Extracted from AI analysis`,
           category: task.category || 'general',
           priority: task.priority || 'medium',
-          status: task.status || 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          status: task.status || 'pending'
         };
         
-        console.log('💾 Inserting task:', taskData);
+        console.log('💾 Creating task via API:', taskData);
         
-        const { data, error } = await supabase
-          .from('tasks')
-          .insert([taskData]);
-        
-        if (error) {
-          console.error('❌ Error saving task:', error);
-          toast.error(`Failed to save task: ${task.title?.substring(0, 30)}...`);
-        } else {
-          console.log('✅ Task saved successfully:', data);
+        try {
+          const response = await api.createTask(taskData);
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ Task created successfully:', result);
+            successCount++;
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('❌ Error creating task:', errorData);
+            errorCount++;
+          }
+        } catch (taskError) {
+          console.error('❌ API error creating task:', taskError);
+          errorCount++;
         }
       }
       
-      if (tasks.length > 0) {
-        toast.success(`${tasks.length} task${tasks.length > 1 ? 's' : ''} saved successfully!`);
+      // Show appropriate success/error messages
+      if (successCount > 0) {
+        toast.success(`${successCount} task${successCount > 1 ? 's' : ''} saved successfully!`);
       }
+      if (errorCount > 0) {
+        toast.error(`${errorCount} task${errorCount > 1 ? 's' : ''} failed to save. Check console for details.`);
+      }
+      
     } catch (error) {
       console.error('❌ Error in saveTasks:', error);
-      toast.error('Failed to save tasks to database');
+      toast.error('Failed to save tasks. Please try again.');
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
@@ -17,6 +17,19 @@ function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('signin');
+
+  // Add event listener for chat navigation
+  useEffect(() => {
+    const handleNavigateToChat = () => {
+      setCurrentPage('chat');
+    };
+    
+    window.addEventListener('navigate-to-chat', handleNavigateToChat);
+    
+    return () => {
+      window.removeEventListener('navigate-to-chat', handleNavigateToChat);
+    };
+  }, []);
 
   const handleAuthModalOpen = (mode = 'signin') => {
     setAuthModalMode(mode);

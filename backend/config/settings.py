@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     database_url: str = ""  # postgresql://user:password@host:port/database
     
     # Supabase Settings (fallback)
-    supabase_url: str = ""  # Will be set via environment variable
-    supabase_anon_key: str = ""  # Will be set via environment variable (anon/public key)
-    supabase_service_key: str = ""  # Will be set via environment variable (service/secret key)
+    supabase_url: str = os.getenv("SUPABASE_URL", "")
+    supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
+    supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
     
     # File Upload Settings
     max_file_size: int = 5 * 1024 * 1024  # 5MB (optimized for audio transcription)
@@ -30,12 +30,12 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     
     # AI Service Settings
-    groq_api_key: str = ""  # Will be set via environment variable
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = "llama3-8b-8192"
     
     # Hugging Face Settings
-    hf_api_key: str = ""  # Will be set via environment variable
-    hf_base_url: str = "https://api-inference.huggingface.co"
+    hf_api_key: str = os.getenv("HF_API_KEY", "")
+    hf_base_url: str = os.getenv("HF_BASE_URL", "https://api-inference.huggingface.co")
     
     # Logging Settings
     log_level: str = "INFO"

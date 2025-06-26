@@ -51,6 +51,48 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
+# Import AI service for fallback responses
+try:
+    from services.ai import ai_service
+    logger.info("✅ AI service imported successfully")
+    
+    # Debug: Check if ai_service is actually available
+    if ai_service:
+        logger.info(f"✅ AI service instance available: {type(ai_service)}")
+        if hasattr(ai_service, 'groq_client'):
+            logger.info(f"✅ Groq client status: {ai_service.groq_client is not None}")
+        if hasattr(ai_service, 'groq_api_key'):
+            logger.info(f"✅ Groq API key configured: {bool(ai_service.groq_api_key)}")
+    else:
+        logger.error("❌ AI service is None after import")
+        
+except ImportError as e:
+    logger.warning(f"⚠️ AI service import failed: {e}")
+    ai_service = None
+except Exception as e:
+    logger.error(f"❌ AI service initialization failed: {e}")
+    ai_service = None
+
+def safe_fallback_response(file_type: str, filename: str, content_hint: str = None):
+    """Safely generate fallback response, with or without AI service"""
+    if ai_service:
+        return ai_service._generate_fallback_response(file_type, filename, content_hint)
+    else:
+        # Basic fallback if AI service is not available
+        if file_type == "image":
+            return analyze_image_content(filename)
+        elif file_type == "text":
+            return analyze_document_content(filename)
+        elif file_type == "pdf":
+            return analyze_document_content(filename)
+        else:
+            return {
+                "analysis": f"File '{filename}' uploaded successfully.",
+                "tasks": [{"title": f"Review {filename}", "description": f"Process {filename}", "priority": "medium", "category": "general", "status": "pending"}],
+                "suggestions": ["Review file content"],
+                "ai_processed": False
+            }
+
 # Global AI service variables (lazy loaded)
 groq_client = None
 supabase_client = None
@@ -694,9 +736,16 @@ def root():
 
 @app.get("/health")
 def health():
+    ai_status = "not_available"
+    if ai_service:
+        ai_status = "available"
+        if hasattr(ai_service, 'groq_client') and ai_service.groq_client:
+            ai_status = "groq_ready"
+    
     return {
         "status": "healthy",
         "ai_features": "lazy_loaded",
+        "ai_service_status": ai_status,
         "timestamp": time.time()
     }
 
@@ -770,30 +819,32 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
             if file.content_type.startswith('audio/'):
                 analysis = await analyze_audio_content(file.filename, str(file_path))
             elif file.content_type.startswith('image/'):
-                # Use AI service for proper image analysis
+                # Use AI service for proper image analysis if available
                 try:
-                    ai_result = await ai_service.process_image(str(file_path), "general")
-                    if ai_result.get("status") == "success":
-                        analysis = {
-                            "analysis_type": "ai_image_analysis",
-                            "description": ai_result.get("ai_insights", ai_result.get("description", "")),
-                            "image_type": ai_result.get("context_type", "general image"),
-                            "confidence": ai_result.get("confidence", 0.8),
-                            "tasks": ai_result.get("tasks", []),
-                            "suggestions": ai_result.get("suggestions", []),
-                            "metadata": ai_result.get("metadata", {}),
-                            "model_used": ai_result.get("model_used", "AI Vision"),
-                            "ai_processed": True
-                        }
+                    if ai_service and hasattr(ai_service, 'process_image'):
+                        ai_result = await ai_service.process_image(str(file_path), "general")
+                        if ai_result.get("status") == "success":
+                            analysis = {
+                                "analysis_type": "ai_image_analysis",
+                                "description": ai_result.get("ai_insights", ai_result.get("description", "")),
+                                "image_type": ai_result.get("context_type", "general image"),
+                                "confidence": ai_result.get("confidence", 0.8),
+                                "tasks": ai_result.get("tasks", []),
+                                "suggestions": ai_result.get("suggestions", []),
+                                "metadata": ai_result.get("metadata", {}),
+                                "model_used": ai_result.get("model_used", "AI Vision"),
+                                "ai_processed": True
+                            }
+                        else:
+                            # Fallback to enhanced filename analysis
+                            analysis = safe_fallback_response("image", file.filename)
                     else:
-                        # Fallback to enhanced filename analysis
-                        analysis = ai_service._generate_fallback_response("image", file.filename)
-                        analysis["ai_processed"] = False
+                        logger.warning("AI service not available - using fallback analysis")
+                        analysis = safe_fallback_response("image", file.filename)
                 except Exception as e:
                     logger.error(f"AI image processing failed: {e}")
                     # Fallback to enhanced filename analysis
-                    analysis = ai_service._generate_fallback_response("image", file.filename)
-                    analysis["ai_processed"] = False
+                    analysis = safe_fallback_response("image", file.filename)
                     
             elif file.content_type.startswith('video/'):
                 analysis = analyze_video_content(file.filename, str(file_path))
@@ -822,27 +873,31 @@ Please provide:
 
 Focus on actionable, implementable recommendations for task management."""
 
-                            ai_result = await ai_service.generate_response(enhanced_prompt, context="Text file analysis")
-                            
-                            analysis = {
-                                "analysis_type": "ai_text_analysis", 
-                                "description": ai_result.get("response", "Text file analyzed successfully"),
-                                "document_type": "text file",
-                                "content_preview": text_content[:300] + "..." if len(text_content) > 300 else text_content,
-                                "tasks": ai_service._extract_tasks_from_response(ai_result.get("response", "")),
-                                "suggestions": ai_service._extract_suggestions_from_response(ai_result.get("response", "")),
-                                "metadata": {
-                                    "file_size": len(text_content),
-                                    "word_count": len(text_content.split()),
+                            if ai_service and hasattr(ai_service, 'generate_response'):
+                                ai_result = await ai_service.generate_response(enhanced_prompt, context="Text file analysis")
+                                
+                                analysis = {
+                                    "analysis_type": "ai_text_analysis", 
+                                    "description": ai_result.get("response", "Text file analyzed successfully"),
+                                    "document_type": "text file",
+                                    "content_preview": text_content[:300] + "..." if len(text_content) > 300 else text_content,
+                                    "tasks": ai_service._extract_tasks_from_response(ai_result.get("response", "")),
+                                    "suggestions": ai_service._extract_suggestions_from_response(ai_result.get("response", "")),
+                                    "metadata": {
+                                        "file_size": len(text_content),
+                                        "word_count": len(text_content.split()),
+                                        "ai_processed": True
+                                    },
+                                    "confidence": 0.9,
                                     "ai_processed": True
-                                },
-                                "confidence": 0.9,
-                                "ai_processed": True
-                            }
+                                }
+                            else:
+                                # Use fallback if AI service not available
+                                analysis = safe_fallback_response("text", file.filename)
+                                analysis["content_preview"] = text_content[:300] + "..." if len(text_content) > 300 else text_content
                             
                         except UnicodeDecodeError:
-                            analysis = ai_service._generate_fallback_response("text", file.filename, "encoding_error")
-                            analysis["ai_processed"] = False
+                            analysis = safe_fallback_response("text", file.filename, "encoding_error")
                     else:
                         # For PDFs and other documents, use enhanced fallback
                         content_hint = "document"
@@ -855,44 +910,43 @@ Focus on actionable, implementable recommendations for task management."""
                         elif 'powerpoint' in file.content_type or 'presentation' in file.content_type:
                             content_hint = "presentation"
                             
-                        analysis = ai_service._generate_fallback_response("pdf", file.filename, content_hint)
-                        analysis["ai_processed"] = False
+                        analysis = safe_fallback_response("pdf", file.filename, content_hint)
                         
                 except Exception as e:
                     logger.error(f"Document processing failed: {e}")
-                    analysis = ai_service._generate_fallback_response("pdf", file.filename)
-                    analysis["ai_processed"] = False
+                    analysis = safe_fallback_response("pdf", file.filename)
             else:
                 # Generic file analysis with enhanced fallback
-                analysis = ai_service._generate_fallback_response("generic", file.filename)
-                analysis["ai_processed"] = False
+                analysis = safe_fallback_response("generic", file.filename)
         else:
             # Fallback to filename-based analysis
             file_ext = Path(file.filename).suffix.lower()
             if file_ext in ['.mp3', '.wav', '.m4a', '.flac', '.ogg']:
                 analysis = await analyze_audio_content(file.filename, str(file_path))
             elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg']:
-                # Use AI service for image analysis
+                # Use AI service for image analysis if available
                 try:
-                    ai_result = await ai_service.process_image(str(file_path), "general")
-                    if ai_result.get("status") == "success":
-                        analysis = {
-                            "analysis_type": "ai_image_analysis",
-                            "description": ai_result.get("ai_insights", ai_result.get("description", "")),
-                            "image_type": ai_result.get("context_type", "general image"),
-                            "confidence": ai_result.get("confidence", 0.8),
-                            "tasks": ai_result.get("tasks", []),
-                            "suggestions": ai_result.get("suggestions", []),
-                            "metadata": ai_result.get("metadata", {}),
-                            "ai_processed": True
-                        }
+                    if ai_service and hasattr(ai_service, 'process_image'):
+                        ai_result = await ai_service.process_image(str(file_path), "general")
+                        if ai_result.get("status") == "success":
+                            analysis = {
+                                "analysis_type": "ai_image_analysis",
+                                "description": ai_result.get("ai_insights", ai_result.get("description", "")),
+                                "image_type": ai_result.get("context_type", "general image"),
+                                "confidence": ai_result.get("confidence", 0.8),
+                                "tasks": ai_result.get("tasks", []),
+                                "suggestions": ai_result.get("suggestions", []),
+                                "metadata": ai_result.get("metadata", {}),
+                                "ai_processed": True
+                            }
+                        else:
+                            analysis = safe_fallback_response("image", file.filename)
                     else:
-                        analysis = ai_service._generate_fallback_response("image", file.filename)
-                        analysis["ai_processed"] = False
+                        logger.warning("AI service not available - using fallback analysis")
+                        analysis = safe_fallback_response("image", file.filename)
                 except Exception as e:
                     logger.error(f"AI image processing failed: {e}")
-                    analysis = ai_service._generate_fallback_response("image", file.filename)
-                    analysis["ai_processed"] = False
+                    analysis = safe_fallback_response("image", file.filename)
             elif file_ext in ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm']:
                 analysis = analyze_video_content(file.filename, str(file_path))
             elif file_ext in ['.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.xlsx', '.xls', '.ppt', '.pptx']:
@@ -910,28 +964,30 @@ CONTENT:
 
 Provide specific, actionable recommendations for task management and productivity."""
 
-                        ai_result = await ai_service.generate_response(enhanced_prompt, context="Text file analysis")
-                        
-                        analysis = {
-                            "analysis_type": "ai_text_analysis",
-                            "description": ai_result.get("response", "Text file analyzed"),
-                            "document_type": "text file",
-                            "tasks": ai_service._extract_tasks_from_response(ai_result.get("response", "")),
-                            "suggestions": ai_service._extract_suggestions_from_response(ai_result.get("response", "")),
-                            "ai_processed": True
-                        }
+                        if ai_service and hasattr(ai_service, 'generate_response'):
+                            ai_result = await ai_service.generate_response(enhanced_prompt, context="Text file analysis")
+                            
+                            analysis = {
+                                "analysis_type": "ai_text_analysis",
+                                "description": ai_result.get("response", "Text file analyzed"),
+                                "document_type": "text file",
+                                "tasks": ai_service._extract_tasks_from_response(ai_result.get("response", "")),
+                                "suggestions": ai_service._extract_suggestions_from_response(ai_result.get("response", "")),
+                                "ai_processed": True
+                            }
+                        else:
+                            # Use fallback if AI service not available
+                            analysis = safe_fallback_response("text", file.filename)
+                            analysis["content_preview"] = text_content[:300] + "..." if len(text_content) > 300 else text_content
                     except Exception as e:
                         logger.error(f"Text processing failed: {e}")
-                        analysis = ai_service._generate_fallback_response("text", file.filename)
-                        analysis["ai_processed"] = False
+                        analysis = safe_fallback_response("text", file.filename)
                 else:
                     # Other document types - enhanced fallback
                     doc_type = "pdf" if file_ext == '.pdf' else "document"
-                    analysis = ai_service._generate_fallback_response(doc_type, file.filename)
-                    analysis["ai_processed"] = False
+                    analysis = safe_fallback_response(doc_type, file.filename)
             else:
-                analysis = ai_service._generate_fallback_response("generic", file.filename)
-                analysis["ai_processed"] = False
+                analysis = safe_fallback_response("generic", file.filename)
         
         return {
             "message": f"File '{file.filename}' uploaded and analyzed successfully!",
@@ -1029,23 +1085,66 @@ async def upload_audio_endpoint(file: UploadFile = File(...)):
         logger.error(f"Audio upload error: {e}")
         raise HTTPException(status_code=500, detail=f"Audio upload failed: {str(e)}")
 
-# Task management endpoints
+# Task management endpoints - FIXED: Use actual Supabase database
 @app.get("/api/v1/tasks")
-def get_tasks():
-    """Get all tasks"""
-    return {
-        "tasks": tasks_db,
-        "count": len(tasks_db),
-        "status": "success"
-    }
+async def get_tasks():
+    """Get all tasks from Supabase database"""
+    try:
+        # Try to get database service (Supabase or fallback)
+        database_service = None
+        try:
+            from services.postgres_db import PostgreSQLDatabaseService
+            database_service = PostgreSQLDatabaseService()
+            await database_service.initialize_connections()
+        except Exception as db_init_error:
+            logger.warning(f"Database service initialization failed: {db_init_error}")
+        
+        if database_service and database_service.connection_type != "memory":
+            # Use actual database
+            db_tasks = await database_service.get_tasks()
+            logger.info(f"Retrieved {len(db_tasks)} tasks from {database_service.connection_type} database")
+            return {
+                "tasks": db_tasks,
+                "count": len(db_tasks),
+                "status": "success",
+                "source": database_service.connection_type
+            }
+        else:
+            # Fallback to in-memory storage
+            logger.info(f"Using in-memory storage fallback - {len(tasks_db)} tasks")
+            return {
+                "tasks": tasks_db,
+                "count": len(tasks_db),
+                "status": "success",
+                "source": "memory"
+            }
+            
+    except Exception as e:
+        logger.error(f"Get tasks error: {e}")
+        # Final fallback to in-memory
+        return {
+            "tasks": tasks_db,
+            "count": len(tasks_db),
+            "status": "success",
+            "source": "memory_fallback"
+        }
 
 @app.post("/api/v1/tasks")
 async def create_task(task: Task):
-    """Create a new task"""
+    """Create a new task in Supabase database"""
     try:
-        new_task = {
-            "id": len(tasks_db) + 1,
-            "title": task.title,
+        # Try to get database service (Supabase or fallback)
+        database_service = None
+        try:
+            from services.postgres_db import PostgreSQLDatabaseService
+            database_service = PostgreSQLDatabaseService()
+            await database_service.initialize_connections()
+        except Exception as db_init_error:
+            logger.warning(f"Database service initialization failed: {db_init_error}")
+        
+        # Prepare task data
+        task_data = {
+            "summary": task.title,  # Map title to summary for Supabase schema
             "description": task.description,
             "priority": task.priority,
             "category": task.category,
@@ -1054,85 +1153,225 @@ async def create_task(task: Task):
             "updated_at": datetime.now().isoformat()
         }
         
-        tasks_db.append(new_task)
-        
-        return {
-            "task": new_task,
-            "message": "Task created successfully",
-            "status": "success"
-        }
+        if database_service and database_service.connection_type != "memory":
+            # Use actual database (Supabase)
+            created_task = await database_service.create_task(task_data)
+            if created_task:
+                logger.info(f"Created task in {database_service.connection_type}: {created_task.get('id')}")
+                return {
+                    "task": created_task,
+                    "message": f"Task created successfully in {database_service.connection_type}",
+                    "status": "success",
+                    "source": database_service.connection_type
+                }
+            else:
+                # Fallback to memory if database creation fails
+                raise Exception("Database task creation returned None")
+        else:
+            # Fallback to in-memory storage
+            logger.info("Using in-memory storage for task creation")
+            new_task = {
+                "id": len(tasks_db) + 1,
+                "title": task.title,
+                "summary": task.title,
+                "description": task.description,
+                "priority": task.priority,
+                "category": task.category,
+                "status": task.status,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            tasks_db.append(new_task)
+            
+            return {
+                "task": new_task,
+                "message": "Task created successfully in memory",
+                "status": "success",
+                "source": "memory"
+            }
         
     except Exception as e:
         logger.error(f"Task creation error: {e}")
-        raise HTTPException(status_code=500, detail=f"Task creation failed: {str(e)}")
+        # Final fallback to in-memory
+        try:
+            new_task = {
+                "id": len(tasks_db) + 1,
+                "title": task.title,
+                "summary": task.title,
+                "description": task.description,
+                "priority": task.priority,
+                "category": task.category,
+                "status": task.status,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            tasks_db.append(new_task)
+            
+            return {
+                "task": new_task,
+                "message": f"Task created in memory fallback (DB error: {str(e)})",
+                "status": "success",
+                "source": "memory_fallback"
+            }
+        except Exception as fallback_error:
+            logger.error(f"Even memory fallback failed: {fallback_error}")
+            raise HTTPException(status_code=500, detail=f"Task creation failed: {str(e)}")
 
 @app.put("/api/v1/tasks/{task_id}")
 async def update_task(task_id: int, task_updates: Dict[str, Any]):
-    """Update a task"""
+    """Update a task in Supabase database"""
     try:
-        task_index = None
-        for i, task in enumerate(tasks_db):
-            if task["id"] == task_id:
-                task_index = i
-                break
+        # Try to get database service (Supabase or fallback)
+        database_service = None
+        try:
+            from services.postgres_db import PostgreSQLDatabaseService
+            database_service = PostgreSQLDatabaseService()
+            await database_service.initialize_connections()
+        except Exception as db_init_error:
+            logger.warning(f"Database service initialization failed: {db_init_error}")
         
-        if task_index is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+        # Add updated timestamp
+        task_updates["updated_at"] = datetime.now().isoformat()
         
-        tasks_db[task_index].update(task_updates)
-        tasks_db[task_index]["updated_at"] = datetime.now().isoformat()
+        if database_service and database_service.connection_type != "memory":
+            # Use actual database
+            updated_task = await database_service.update_task(task_id, task_updates)
+            if updated_task:
+                logger.info(f"Updated task in {database_service.connection_type}: {task_id}")
+                return {
+                    "task": updated_task,
+                    "message": f"Task updated successfully in {database_service.connection_type}",
+                    "status": "success",
+                    "source": database_service.connection_type
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Task not found")
+        else:
+            # Fallback to in-memory storage
+            task_index = None
+            for i, task in enumerate(tasks_db):
+                if task["id"] == task_id:
+                    task_index = i
+                    break
+            
+            if task_index is None:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            tasks_db[task_index].update(task_updates)
+            
+            return {
+                "task": tasks_db[task_index],
+                "message": "Task updated successfully in memory",
+                "status": "success",
+                "source": "memory"
+            }
         
-        return {
-            "task": tasks_db[task_index],
-            "message": "Task updated successfully",
-            "status": "success"
-        }
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Task update error: {e}")
         raise HTTPException(status_code=500, detail=f"Task update failed: {str(e)}")
 
 @app.delete("/api/v1/tasks/{task_id}")
 async def delete_task(task_id: int):
-    """Delete a task"""
+    """Delete a task from Supabase database"""
     try:
-        task_index = None
-        for i, task in enumerate(tasks_db):
-            if task["id"] == task_id:
-                task_index = i
-                break
+        # Try to get database service (Supabase or fallback) 
+        database_service = None
+        try:
+            from services.postgres_db import PostgreSQLDatabaseService
+            database_service = PostgreSQLDatabaseService()
+            await database_service.initialize_connections()
+        except Exception as db_init_error:
+            logger.warning(f"Database service initialization failed: {db_init_error}")
         
-        if task_index is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+        if database_service and database_service.connection_type != "memory":
+            # Use actual database
+            deleted = await database_service.delete_task(task_id)
+            if deleted:
+                logger.info(f"Deleted task from {database_service.connection_type}: {task_id}")
+                return {
+                    "message": f"Task deleted successfully from {database_service.connection_type}",
+                    "task_id": task_id,
+                    "status": "success",
+                    "source": database_service.connection_type
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Task not found")
+        else:
+            # Fallback to in-memory storage
+            task_index = None
+            for i, task in enumerate(tasks_db):
+                if task["id"] == task_id:
+                    task_index = i
+                    break
+            
+            if task_index is None:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            deleted_task = tasks_db.pop(task_index)
+            
+            return {
+                "message": "Task deleted successfully from memory",
+                "deleted_task": deleted_task,
+                "status": "success",
+                "source": "memory"
+            }
         
-        deleted_task = tasks_db.pop(task_index)
-        
-        return {
-            "message": "Task deleted successfully",
-            "deleted_task": deleted_task,
-            "status": "success"
-        }
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Task deletion error: {e}")
         raise HTTPException(status_code=500, detail=f"Task deletion failed: {str(e)}")
 
 @app.delete("/api/v1/tasks")
 async def clear_all_tasks():
-    """Clear all tasks"""
+    """Clear all tasks from Supabase database"""
     try:
-        count = len(tasks_db)
-        tasks_db.clear()
+        # Try to get database service (Supabase or fallback)
+        database_service = None
+        try:
+            from services.postgres_db import PostgreSQLDatabaseService
+            database_service = PostgreSQLDatabaseService()
+            await database_service.initialize_connections()
+        except Exception as db_init_error:
+            logger.warning(f"Database service initialization failed: {db_init_error}")
         
-        return {
-            "message": f"Cleared {count} tasks successfully",
-            "deleted_count": count,
-            "status": "success"
-        }
+        if database_service and database_service.connection_type != "memory":
+            # Use actual database
+            count = await database_service.clear_all_tasks()
+            logger.info(f"Cleared {count} tasks from {database_service.connection_type}")
+            return {
+                "message": f"Cleared {count} tasks successfully from {database_service.connection_type}",
+                "deleted_count": count,
+                "status": "success",
+                "source": database_service.connection_type
+            }
+        else:
+            # Fallback to in-memory storage
+            count = len(tasks_db)
+            tasks_db.clear()
+            
+            return {
+                "message": f"Cleared {count} tasks successfully from memory",
+                "deleted_count": count,
+                "status": "success",
+                "source": "memory"
+            }
         
     except Exception as e:
         logger.error(f"Clear tasks error: {e}")
-        raise HTTPException(status_code=500, detail=f"Clear tasks failed: {str(e)}")
+        # Final fallback
+        count = len(tasks_db)
+        tasks_db.clear()
+        return {
+            "message": f"Cleared {count} tasks from memory fallback (DB error: {str(e)})",
+            "deleted_count": count,
+            "status": "success",
+            "source": "memory_fallback"
+        }
 
 @app.get("/api/v1/status")
 def get_status():
