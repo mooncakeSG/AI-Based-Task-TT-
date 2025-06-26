@@ -41,12 +41,9 @@ def get_tasks():
     """Get tasks - minimal implementation"""
     logger.info("GET /api/v1/tasks called")
     return {
-        "tasks": [
-            {"id": 1, "summary": "Test task", "status": "pending"}
-        ],
-        "count": 1,
-        "status": "success",
-        "database_connected": False
+        "tasks": [],
+        "count": 0,
+        "status": "success"
     }
 
 @app.post("/api/v1/tasks")
