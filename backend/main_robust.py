@@ -207,11 +207,12 @@ app = FastAPI(
 # Add CORS middleware with more permissive settings for debugging
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if config.DEBUG else config.CORS_ORIGINS,  # Allow all origins in debug mode
-    allow_credentials=False if config.DEBUG else True,  # Disable credentials when using wildcard
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_origins=["*"],  # Completely open for debugging
+    allow_credentials=False,  # Must be False when using wildcard
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=86400,  # Cache preflight for 24 hours
 )
 
 # Request logging middleware with CORS debugging
@@ -323,6 +324,15 @@ async def test_endpoint():
         "cors_enabled": True,
         "services": service_manager.services_loaded
     }
+
+# Add explicit OPTIONS handlers for CORS preflight
+@app.options("/api/v1/tasks")
+@app.options("/api/v1/chat")  
+@app.options("/api/v1/test")
+@app.options("/api/v1/status")
+async def options_handler():
+    """Handle CORS preflight requests"""
+    return {"message": "CORS preflight OK"}
 
 @app.get("/api/v1/tasks", response_model=TasksResponse)
 async def get_tasks():
