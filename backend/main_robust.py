@@ -1,3 +1,4 @@
+# Version 3.0 - Fixed CORS OPTIONS handlers
 import logging
 import sys
 import time
