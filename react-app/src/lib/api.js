@@ -1,4 +1,4 @@
-// API Configuration
+// API Configuration - Updated with CORS fix
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'https://intelliassist-bxl3.onrender.com'}/api/v1`;
 
 console.log('API Base URL:', API_BASE_URL);
