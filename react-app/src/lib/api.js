@@ -8,11 +8,14 @@ export const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   console.log(`Making API call to: ${url}`);
   
+  // Only add Content-Type for requests with body data
+  const headers = { ...options.headers };
+  if (options.body && typeof options.body === 'string') {
+    headers['Content-Type'] = 'application/json';
+  }
+  
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     ...options,
   };
 
