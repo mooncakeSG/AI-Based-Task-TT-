@@ -1,4 +1,4 @@
-# Version 3.0 - Fixed CORS OPTIONS handlers
+# Version 3.1 - Fixed CORS OPTIONS handlers with explicit headers
 import logging
 import sys
 import time
@@ -326,26 +326,58 @@ async def test_endpoint():
         "services": service_manager.services_loaded
     }
 
-# Add explicit OPTIONS handlers for CORS preflight
+# Add explicit OPTIONS handlers for CORS preflight with proper headers
 @app.options("/api/v1/tasks")
 async def options_tasks():
     """Handle CORS preflight for tasks"""
-    return Response(status_code=200)
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
 
 @app.options("/api/v1/chat")  
 async def options_chat():
     """Handle CORS preflight for chat"""
-    return Response(status_code=200)
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
 
 @app.options("/api/v1/test")
 async def options_test():
     """Handle CORS preflight for test"""
-    return Response(status_code=200)
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
 
 @app.options("/api/v1/status")
 async def options_status():
     """Handle CORS preflight for status"""
-    return Response(status_code=200)
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
 
 @app.get("/api/v1/tasks", response_model=TasksResponse)
 async def get_tasks():
