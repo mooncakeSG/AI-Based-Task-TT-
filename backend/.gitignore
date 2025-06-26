@@ -109,3 +109,4 @@ docs/_build/
 *.key
 *.crt
 *.cert 
+.vercel

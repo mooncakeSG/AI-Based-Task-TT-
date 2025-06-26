@@ -1,0 +1,29 @@
+# Core Requirements - Fixed with Missing Dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# Pydantic and Settings (CRITICAL - was missing!)
+pydantic>=2.7.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
+
+# Environment Management
+python-dotenv==1.0.0
+
+# HTTP Client
+requests==2.31.0
+httpx>=0.26.0,<0.29
+
+# Database
+supabase==2.16.0
+
+# AI API
+groq>=0.4.1,<1.0.0
+
+# Authentication
+PyJWT>=2.10.1,<3.0.0
+
+# Additional essentials found in imports
+typing-extensions>=4.0.0
+email-validator>=2.0.0 

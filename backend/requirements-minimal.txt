@@ -1,0 +1,29 @@
+# Ultra-minimal FastAPI dependencies for reliable deployment
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+pydantic==2.5.0
+
+# AI dependencies for analysis features
+groq==0.29.0
+
+# HTTP client compatible with groq and supabase
+httpx>=0.24.0,<0.25.0
+
+# Image processing (lightweight)
+Pillow==10.1.0
+
+# Essential utilities
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Document processing (lightweight alternatives)
+PyPDF2==3.0.1
+python-docx==1.1.0
+
+# Text processing (lightweight)
+chardet==5.2.0
+
+# Database integration
+supabase==2.3.0 

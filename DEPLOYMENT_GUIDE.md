@@ -14,13 +14,95 @@
 
 ## Overview
 
-This guide provides step-by-step instructions for deploying the AI-Based Task Management application to production environments. The application consists of:
+This guide provides step-by-step instructions for deploying the AI-Based Task Management application to production environments. The deployment includes both manual setup and automated cloud deployment options.
 
+### Deployment Options:
+
+#### 🚀 **Quick Cloud Deployment (Recommended)**
+- **Backend**: Render.com with `render.yaml` configuration
+- **Frontend**: Vercel with `vercel.json` configuration
+- **Database**: PostgreSQL on Render (free tier)
+- **Zero-config deployment**: Push to GitHub and deploy automatically
+
+#### 🛠️ **Manual Server Deployment**
 - **Frontend**: React.js application with Vite
-- **Backend**: FastAPI Python application
+- **Backend**: FastAPI Python application  
 - **Database**: Supabase (PostgreSQL)
 - **AI Services**: Groq LLaMA, Hugging Face (Whisper, BLIP)
 - **File Storage**: Local/Cloud storage for uploads
+
+## 🚀 Quick Cloud Deployment
+
+### Files Created for Cloud Deployment:
+- **`render.yaml`** - Backend deployment configuration for Render
+- **`react-app/vercel.json`** - Frontend deployment configuration for Vercel
+
+### Backend on Render (render.yaml)
+```yaml
+services:
+  # PostgreSQL Database (Free Tier)
+  - type: pserv
+    name: intelliassist-database
+    plan: free
+    
+  # FastAPI Backend Service (Free Tier)
+  - type: web
+    name: intelliassist-backend
+    env: python
+    plan: free
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /ping
+```
+
+### Frontend on Vercel (vercel.json)
+```json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
+```
+
+### Quick Deployment Steps:
+
+1. **Deploy Backend to Render**:
+   - Connect GitHub repository to Render
+   - Render auto-detects `render.yaml`
+   - Set environment variables in Render dashboard:
+     ```bash
+     GROQ_API_KEY=your_groq_api_key
+     HF_API_KEY=your_hf_api_key
+     SUPABASE_URL=your_supabase_url
+     SUPABASE_ANON_KEY=your_supabase_anon_key
+     ```
+
+2. **Deploy Frontend to Vercel**:
+   - Connect GitHub repository to Vercel
+   - Select `react-app` as root directory
+   - Set environment variables:
+     ```bash
+     VITE_API_BASE_URL=https://your-backend.onrender.com
+     VITE_SUPABASE_URL=your_supabase_url
+     VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+     ```
+
+3. **Update CORS**: Add your Vercel domain to backend CORS settings
+
+**Total deployment time: ~10 minutes** ⚡
+
+---
+
+## 🛠️ Manual Server Deployment
 
 ## Prerequisites
 

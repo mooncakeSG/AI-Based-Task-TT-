@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>Upload Debug Test</h1>
+    <p>Testing upload functionality to: <strong>https://intelliassist-backend.fly.dev</strong></p>
+    
+    <div id="results"></div>
+    
+    <h3>Test Upload</h3>
+    <input type="file" id="fileInput" accept="audio/*,image/*,text/*,application/pdf">
+    <button onclick="testUpload()">Test Upload</button>
+    
+    <script>
+        const API_BASE = 'https://intelliassist-backend.fly.dev/api/v1';
+        const results = document.getElementById('results');
+        
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            results.appendChild(div);
+        }
+        
+        // Test 1: Health check
+        async function testHealth() {
+            try {
+                addResult('Testing health endpoint...', 'info');
+                const response = await fetch(`${API_BASE.replace('/api/v1', '')}/health`);
+                const data = await response.json();
+                addResult(`✅ Health check: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Test 2: CORS preflight
+        async function testCORS() {
+            try {
+                addResult('Testing CORS preflight...', 'info');
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'OPTIONS'
+                });
+                addResult(`✅ CORS preflight: ${response.status} ${response.statusText}`, 'success');
+            } catch (error) {
+                addResult(`❌ CORS preflight failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Test 3: Upload
+        async function testUpload() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) {
+                addResult('❌ Please select a file first', 'error');
+                return;
+            }
+            
+            try {
+                addResult('Testing file upload...', 'info');
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addResult(`✅ Upload successful: ${JSON.stringify(data, null, 2)}`, 'success');
+                
+                // Check if AI analysis is working
+                if (data.processing_details && data.processing_details.file_analysis) {
+                    const analysis = data.processing_details.file_analysis;
+                    addResult(`🤖 AI Analysis: ${analysis.transcription || analysis.description || 'Analysis completed'}`, 'info');
+                    
+                    if (analysis.suggestions && analysis.suggestions.length > 0) {
+                        addResult(`💡 Suggestions: ${analysis.suggestions.join(', ')}`, 'info');
+                    }
+                    
+                    if (analysis.tasks && analysis.tasks.length > 0) {
+                        addResult(`✅ Tasks found: ${analysis.tasks.length}`, 'info');
+                    }
+                }
+                
+            } catch (error) {
+                addResult(`❌ Upload failed: ${error.message}`, 'error');
+                console.error('Upload error details:', error);
+            }
+        }
+        
+        // Run initial tests
+        window.onload = function() {
+            addResult('Starting debug tests...', 'info');
+            testHealth();
+            setTimeout(testCORS, 1000);
+        };
+    </script>
+</body>
+</html> 

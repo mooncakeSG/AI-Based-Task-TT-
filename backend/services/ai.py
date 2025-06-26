@@ -3,10 +3,16 @@ import time
 import asyncio
 import base64
 import os
+import re
 from typing import Dict, Any, Optional, List
 import httpx
 from groq import Groq
-from PIL import Image
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
 import io
 from config.settings import settings
 from .monitoring import track_groq_call, track_huggingface_call
@@ -173,6 +179,9 @@ Remember: You're here to make users more productive and organized. Always think 
     
     def _encode_image_to_base64(self, image_path: str) -> str:
         """Convert image file to base64 string"""
+        if not PIL_AVAILABLE:
+            raise ImportError("PIL (Pillow) is not available. Please install with: pip install Pillow")
+        
         try:
             # Optimize image size for API
             with Image.open(image_path) as img:
@@ -877,101 +886,128 @@ Please provide a comprehensive response that addresses all the input types and r
             }
         
     def _extract_tasks_from_response(self, response_text: str) -> List[Dict[str, Any]]:
-        """
-        Extract task information from AI response text
-        
-        Args:
-            response_text (str): AI response text
-            
-        Returns:
-            List[Dict[str, Any]]: List of extracted tasks
-        """
+        """Extract tasks from AI response text"""
         tasks = []
         
-        # Keywords that indicate task-related content
-        task_indicators = [
-            'plan', 'task', 'todo', 'step', 'action', 'schedule', 'organize',
-            'deadline', 'project', 'complete', 'finish', 'work on', 'need to'
-        ]
-        
-        # Check if response contains task-related content
-        response_lower = response_text.lower()
-        has_tasks = any(indicator in response_lower for indicator in task_indicators)
-        
-        if not has_tasks:
+        if not response_text:
             return tasks
-        
-        # Split response into lines for processing
+            
+        # Look for common task indicators
         lines = response_text.split('\n')
+        task_indicators = ['task:', 'action:', 'todo:', 'action item:', '- ', '• ', '1. ', '2. ', '3. ']
         
         for line in lines:
             line = line.strip()
-            if not line:
-                continue
+            line_lower = line.lower()
+            
+            # Check if line contains task indicators
+            for indicator in task_indicators:
+                if line_lower.startswith(indicator) and len(line) > len(indicator) + 5:
+                    task_text = line[len(indicator):].strip() if line_lower.startswith(indicator) else line
+                    
+                    # Clean up task text
+                    task_text = task_text.strip('- •').strip()
+                    
+                    if len(task_text) > 10:  # Minimum meaningful task length
+                        # Determine priority based on keywords
+                        priority = "medium"
+                        if any(word in task_text.lower() for word in ["urgent", "asap", "immediate", "critical"]):
+                            priority = "high"
+                        elif any(word in task_text.lower() for word in ["later", "when possible", "optional"]):
+                            priority = "low"
+                        
+                        # Determine category based on keywords
+                        category = "general"
+                        if any(word in task_text.lower() for word in ["review", "check", "examine"]):
+                            category = "review"
+                        elif any(word in task_text.lower() for word in ["create", "make", "build", "develop"]):
+                            category = "creation"
+                        elif any(word in task_text.lower() for word in ["contact", "call", "email", "meet"]):
+                            category = "communication"
+                        elif any(word in task_text.lower() for word in ["plan", "organize", "schedule"]):
+                            category = "planning"
+                        
+                        tasks.append({
+                            "title": task_text[:100],  # Limit title length
+                            "description": task_text,
+                            "priority": priority,
+                            "category": category,
+                            "status": "pending"
+                        })
+                    break
+        
+        # If no tasks found through indicators, try to extract from structured content
+        if not tasks and response_text:
+            # Look for numbered lists or action items
+            import re
+            
+            # Pattern for numbered items like "1. Do something"
+            numbered_pattern = r'^\d+\.\s*(.+)$'
+            
+            # Pattern for bullet points
+            bullet_pattern = r'^[•\-\*]\s*(.+)$'
+            
+            for line in lines:
+                line = line.strip()
                 
-            # Look for numbered lists, bullet points, or task-like patterns
-            task_patterns = [
-                r'^\d+\.\s*(.+)',  # 1. Task description
-                r'^[-*•]\s*(.+)',  # - Task description or * Task description
-                r'^(?:task|step|action)(?:\s*\d+)?[:\s]+(.+)',  # Task: description
-                r'(?:you should|need to|plan to|will)\s+(.+)',  # Action phrases
-            ]
-            
-            for pattern in task_patterns:
-                import re
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    task_text = match.group(1).strip()
+                numbered_match = re.match(numbered_pattern, line, re.MULTILINE)
+                bullet_match = re.match(bullet_pattern, line, re.MULTILINE)
+                
+                if numbered_match or bullet_match:
+                    task_text = numbered_match.group(1) if numbered_match else bullet_match.group(1)
+                    task_text = task_text.strip()
                     
-                    # Skip very short or generic text
-                    if len(task_text) < 10 or task_text.lower() in ['continue', 'next', 'done']:
-                        continue
-                    
-                    # Determine priority based on keywords
-                    priority = 'medium'
-                    if any(word in task_text.lower() for word in ['urgent', 'asap', 'critical', 'important']):
-                        priority = 'high'
-                    elif any(word in task_text.lower() for word in ['later', 'eventually', 'when possible']):
-                        priority = 'low'
-                    
-                    # Determine category based on content
-                    category = 'general'
-                    if any(word in task_text.lower() for word in ['meeting', 'call', 'email', 'contact']):
-                        category = 'communication'
-                    elif any(word in task_text.lower() for word in ['research', 'analyze', 'study', 'learn']):
-                        category = 'research'
-                    elif any(word in task_text.lower() for word in ['create', 'build', 'develop', 'design']):
-                        category = 'development'
-                    elif any(word in task_text.lower() for word in ['plan', 'organize', 'schedule']):
-                        category = 'planning'
-                    
-                    task = {
-                        'title': task_text[:100],  # Limit title length
-                        'summary': task_text,
-                        'status': 'pending',
-                        'priority': priority,
-                        'category': category
-                    }
-                    tasks.append(task)
-                    break  # Only match first pattern per line
+                    if len(task_text) > 10 and not any(task["title"] == task_text[:100] for task in tasks):
+                        tasks.append({
+                            "title": task_text[:100],
+                            "description": task_text,
+                            "priority": "medium",
+                            "category": "general",
+                            "status": "pending"
+                        })
         
-        # If no structured tasks found but response seems task-related, create a general task
-        if not tasks and has_tasks and len(response_text) > 20:
-            # Create a summary task from the response
-            summary = response_text[:200].strip()
-            if summary.endswith('.'):
-                summary = summary[:-1]
-            
-            task = {
-                'title': f"Follow AI recommendations",
-                'summary': summary + "...",
-                'status': 'pending',
-                'priority': 'medium',
-                'category': 'ai-generated'
-            }
-            tasks.append(task)
+        return tasks[:10]  # Limit to maximum 10 tasks
+
+    def _extract_suggestions_from_response(self, response_text: str) -> List[str]:
+        """Extract suggestions from AI response text"""
+        suggestions = []
         
-        return tasks
+        if not response_text:
+            return suggestions
+            
+        lines = response_text.split('\n')
+        suggestion_indicators = ['suggest', 'recommend', 'consider', 'try', 'might want to', 'should', 'could']
+        
+        for line in lines:
+            line = line.strip()
+            line_lower = line.lower()
+            
+            # Look for explicit suggestions
+            if any(indicator in line_lower for indicator in suggestion_indicators):
+                # Clean up the suggestion
+                suggestion = line.strip('- •').strip()
+                if len(suggestion) > 15 and suggestion not in suggestions:
+                    suggestions.append(suggestion)
+            
+            # Look for bullet points or numbered items that might be suggestions
+            elif (line.startswith('- ') or line.startswith('• ') or 
+                  line.startswith('* ') or re.match(r'^\d+\.\s', line)):
+                suggestion = re.sub(r'^[\-\•\*\d\.\s]+', '', line).strip()
+                if len(suggestion) > 15 and suggestion not in suggestions:
+                    suggestions.append(suggestion)
+        
+        # If no specific suggestions found, extract general advice
+        if not suggestions and response_text:
+            sentences = response_text.split('.')
+            for sentence in sentences:
+                sentence = sentence.strip()
+                sentence_lower = sentence.lower()
+                
+                if (any(indicator in sentence_lower for indicator in suggestion_indicators) and 
+                    len(sentence) > 20 and len(sentence) < 200):
+                    suggestions.append(sentence + '.')
+        
+        return suggestions[:8]  # Limit to maximum 8 suggestions
 
     async def generate_response(self, prompt: str, context: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -1132,64 +1168,6 @@ Please provide a comprehensive response that addresses all the input types and r
         # Return original task type if no specific context detected
         return original_task_type
 
-    def _extract_suggestions_from_response(self, response_text: str) -> List[Dict[str, Any]]:
-        """Extract structured suggestions from AI response"""
-        suggestions = []
-        
-        if not response_text:
-            return suggestions
-        
-        lines = response_text.split('\n')
-        current_category = "general"
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Detect category headers
-            if any(header in line.upper() for header in ['CONTENT ANALYSIS', 'ACTIONABLE TASKS', 'PRIORITIES', 'NEXT STEPS', 'ORGANIZATION']):
-                current_category = line.lower().replace(':', '').strip()
-                continue
-            elif any(header in line.upper() for header in ['DATA INSIGHTS', 'DECISION POINTS', 'MONITORING TASKS']):
-                current_category = line.lower().replace(':', '').strip()
-                continue
-            elif any(header in line.upper() for header in ['VISUAL CONTENT', 'WORK-RELATED ELEMENTS', 'ACTIONABLE INSIGHTS']):
-                current_category = line.lower().replace(':', '').strip()
-                continue
-            
-            # Extract numbered or bulleted suggestions
-            suggestion_patterns = [
-                r'^\d+\.\s*(.+)',  # 1. Suggestion
-                r'^[-*•]\s*(.+)',  # - Suggestion or * Suggestion
-                r'^(?:suggestion|recommendation|action)(?:\s*\d+)?[:\s]+(.+)',  # Action: suggestion
-            ]
-            
-            for pattern in suggestion_patterns:
-                import re
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    suggestion_text = match.group(1).strip()
-                    
-                    if len(suggestion_text) > 15:  # Filter out very short suggestions
-                        # Determine priority based on keywords
-                        priority = 'medium'
-                        if any(word in suggestion_text.lower() for word in ['urgent', 'immediately', 'asap', 'critical']):
-                            priority = 'high'
-                        elif any(word in suggestion_text.lower() for word in ['consider', 'eventually', 'when possible']):
-                            priority = 'low'
-                        
-                        suggestion = {
-                            'text': suggestion_text,
-                            'category': current_category,
-                            'priority': priority,
-                            'actionable': any(word in suggestion_text.lower() for word in ['create', 'schedule', 'review', 'update', 'contact', 'organize'])
-                        }
-                        suggestions.append(suggestion)
-                    break
-        
-        return suggestions
-
     def _add_chat_direction(self, response: str, content_type: str = "content") -> str:
         """Add chat direction at the end of AI responses to guide users to further assistance"""
         chat_directions = {
@@ -1206,6 +1184,177 @@ Please provide a comprehensive response that addresses all the input types and r
             return f"{response}\n\n---\n\n{direction}"
         else:
             return direction
+
+    def _generate_fallback_response(self, file_type: str, filename: str, content_hint: str = None) -> Dict[str, Any]:
+        """Generate intelligent fallback responses when AI processing fails"""
+        
+        fallbacks = {
+            "image": {
+                "analysis": f"Image '{filename}' uploaded successfully. Based on the filename, this appears to be a visual document that may contain important information for task management.",
+                "tasks": [
+                    {
+                        "title": f"Review image content: {filename}",
+                        "description": "Manually review the uploaded image for tasks, action items, or important information",
+                        "priority": "medium",
+                        "category": "review",
+                        "status": "pending"
+                    },
+                    {
+                        "title": "Extract text from image if needed",
+                        "description": "If the image contains text, consider transcribing key points manually",
+                        "priority": "low",
+                        "category": "data-entry",
+                        "status": "pending"
+                    }
+                ],
+                "suggestions": [
+                    "Review the image for any handwritten notes or printed text",
+                    "Check for diagrams, charts, or visual information that might need follow-up",
+                    "Consider if the image shows a whiteboard, meeting notes, or planning documents",
+                    "Use the Chat feature to describe what you see in the image for AI assistance"
+                ]
+            },
+            "pdf": {
+                "analysis": f"PDF document '{filename}' uploaded successfully. PDFs often contain structured information, reports, or documentation that can yield multiple tasks and action items.",
+                "tasks": [
+                    {
+                        "title": f"Review PDF document: {filename}",
+                        "description": "Thoroughly review the PDF content for action items, deadlines, and important information",
+                        "priority": "high",
+                        "category": "document-review",
+                        "status": "pending"
+                    },
+                    {
+                        "title": "Extract key information from PDF",
+                        "description": "Identify and document important data, decisions, or requirements from the PDF",
+                        "priority": "medium",
+                        "category": "data-extraction",
+                        "status": "pending"
+                    }
+                ],
+                "suggestions": [
+                    "Check for highlighted text, annotations, or margin notes",
+                    "Look for action items, deadlines, or project requirements",
+                    "Scan for contact information, meeting schedules, or follow-up items",
+                    "Consider if the PDF is a report that needs responses or feedback",
+                    "Use the Chat feature to ask specific questions about the PDF content"
+                ]
+            },
+            "text": {
+                "analysis": f"Text file '{filename}' processed successfully. Text documents often contain notes, plans, or structured information that can be converted into actionable tasks.",
+                "tasks": [
+                    {
+                        "title": f"Process text content: {filename}",
+                        "description": "Review the text file content and organize information into actionable items",
+                        "priority": "medium",
+                        "category": "text-processing",
+                        "status": "pending"
+                    },
+                    {
+                        "title": "Organize information from text file",
+                        "description": "Structure the information into categories like tasks, notes, ideas, or references",
+                        "priority": "medium",
+                        "category": "organization",
+                        "status": "pending"
+                    }
+                ],
+                "suggestions": [
+                    "Look for bullet points or numbered lists that might be task items",
+                    "Check for dates, deadlines, or time-sensitive information",
+                    "Identify names, contacts, or people who need follow-up",
+                    "Consider if the text contains meeting notes or project plans",
+                    "Use the Chat feature to help organize and prioritize the content"
+                ]
+            },
+            "audio": {
+                "analysis": f"Audio file '{filename}' uploaded successfully. Audio recordings often contain valuable spoken information, meeting discussions, or voice notes that can be converted to tasks.",
+                "tasks": [
+                    {
+                        "title": f"Review audio content: {filename}",
+                        "description": "Listen to the audio recording and identify action items, decisions, or important information",
+                        "priority": "medium",
+                        "category": "audio-review",
+                        "status": "pending"
+                    },
+                    {
+                        "title": "Transcribe key points from audio",
+                        "description": "Create written notes of the most important parts of the audio recording",
+                        "priority": "low",
+                        "category": "transcription",
+                        "status": "pending"
+                    }
+                ],
+                "suggestions": [
+                    "Listen for action items, assignments, or commitments made",
+                    "Note any deadlines, dates, or time-sensitive information mentioned",
+                    "Identify participants and their responsibilities if it's a meeting",
+                    "Check for follow-up items or next steps discussed",
+                    "Use the Chat feature to help organize spoken information into tasks"
+                ]
+            },
+            "generic": {
+                "analysis": f"File '{filename}' uploaded successfully. While automatic processing isn't available for this file type, it may still contain valuable information for your task management.",
+                "tasks": [
+                    {
+                        "title": f"Review file: {filename}",
+                        "description": f"Manually review the uploaded file ({file_type}) for relevant information",
+                        "priority": "medium",
+                        "category": "file-review",
+                        "status": "pending"
+                    }
+                ],
+                "suggestions": [
+                    "Determine what type of information the file contains",
+                    "Check if the file needs to be converted to a supported format",
+                    "Consider if the file requires specific software to open properly",
+                    "Use the Chat feature to describe the file content for AI assistance"
+                ]
+            }
+        }
+        
+        # Enhanced suggestions based on content hints
+        if content_hint:
+            content_suggestions = self._get_content_specific_suggestions(content_hint)
+            fallback = fallbacks.get(file_type, fallbacks["generic"])
+            fallback["suggestions"].extend(content_suggestions)
+            return fallback
+        
+        return fallbacks.get(file_type, fallbacks["generic"])
+    
+    def _get_content_specific_suggestions(self, content_hint: str) -> List[str]:
+        """Generate additional suggestions based on content hints"""
+        suggestions = []
+        content_lower = content_hint.lower()
+        
+        if any(word in content_lower for word in ["meeting", "agenda", "minutes"]):
+            suggestions.extend([
+                "Check for action items assigned to specific people",
+                "Look for follow-up meetings or deadlines mentioned",
+                "Identify decisions made that need implementation"
+            ])
+        
+        if any(word in content_lower for word in ["project", "plan", "roadmap"]):  
+            suggestions.extend([
+                "Break down the project into smaller, manageable tasks",
+                "Identify dependencies between different project components",
+                "Set up milestone tracking and progress monitoring"
+            ])
+        
+        if any(word in content_lower for word in ["todo", "task", "checklist", "list"]):
+            suggestions.extend([
+                "Prioritize items based on urgency and importance",
+                "Set realistic deadlines for each task",
+                "Consider grouping related tasks together"
+            ])
+        
+        if any(word in content_lower for word in ["contact", "phone", "email", "address"]):
+            suggestions.extend([
+                "Add contact information to your address book",
+                "Set reminders to follow up with contacts",
+                "Consider scheduling meetings or calls if needed"
+            ])
+        
+        return suggestions
 
 # Global AI service instance
 ai_service = AIService() 

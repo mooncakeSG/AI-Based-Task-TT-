@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 # Import routes and config
 from routes.chat import router as chat_router
 from routes.monitoring import router as monitoring_router
+from routes.auth import router as auth_router
 from config.settings import settings, get_cors_origins, get_allowed_file_types
 from services.ai import ai_service
 from services.postgres_db import database_service
@@ -149,12 +150,22 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Health check route
+# Health check routes
 @app.get("/ping")
-async def health_check():
+async def ping():
     """Health check endpoint"""
     return {
         "status": "ok",
+        "app": settings.app_name,
+        "version": settings.app_version,
+        "timestamp": time.time()
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render"""
+    return {
+        "status": "healthy",
         "app": settings.app_name,
         "version": settings.app_version,
         "timestamp": time.time()
@@ -172,6 +183,7 @@ async def root():
     }
 
 # Include routers
+app.include_router(auth_router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(chat_router, prefix="/api/v1", tags=["Chat & Upload"])
 app.include_router(monitoring_router, tags=["Monitoring"])
 

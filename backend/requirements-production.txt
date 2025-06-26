@@ -1,0 +1,18 @@
+# Core FastAPI dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+pydantic==2.5.0
+python-json-logger==2.0.7
+
+# Optional AI Libraries (lazy loaded)
+groq==0.4.1
+transformers==4.36.0
+torch==2.1.0
+torchaudio==2.1.0
+
+# Optional Database
+supabase==2.3.0
+
+ 

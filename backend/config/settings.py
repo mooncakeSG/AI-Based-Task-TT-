@@ -10,19 +10,23 @@ class Settings(BaseSettings):
     
     # API Settings
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    api_port: int = int(os.getenv("PORT", "8000"))
     
     # CORS Settings
+<<<<<<< HEAD
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:3000"
+=======
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000,https://intelliassist-frontend-idaidfoq4-mooncakesgs-projects.vercel.app,https://intelliassist-frontend-9pniapdi0-mooncakesgs-projects.vercel.app,https://intelliassist-frontend-mjr0irfwc-mooncakesgs-projects.vercel.app,https://*.vercel.app,https://*.onrender.com,https://intelliassist-frontend.onrender.com"
+>>>>>>> 9fbaee7ad813896571bc5b6608d6792c7baa6996
     
     # Database Settings
     # PostgreSQL direct connection (preferred)
     database_url: str = ""  # postgresql://user:password@host:port/database
     
     # Supabase Settings (fallback)
-    supabase_url: str = ""  # Will be set via environment variable
-    supabase_anon_key: str = ""  # Will be set via environment variable (anon/public key)
-    supabase_service_key: str = ""  # Will be set via environment variable (service/secret key)
+    supabase_url: str = os.getenv("SUPABASE_URL", "")
+    supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
+    supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
     
     # File Upload Settings
     max_file_size: int = 5 * 1024 * 1024  # 5MB (optimized for audio transcription)
@@ -30,12 +34,12 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     
     # AI Service Settings
-    groq_api_key: str = ""  # Will be set via environment variable
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = "llama3-8b-8192"
     
     # Hugging Face Settings
-    hf_api_key: str = ""  # Will be set via environment variable
-    hf_base_url: str = "https://api-inference.huggingface.co"
+    hf_api_key: str = os.getenv("HF_API_KEY", "")
+    hf_base_url: str = os.getenv("HF_BASE_URL", "https://api-inference.huggingface.co")
     
     # Logging Settings
     log_level: str = "INFO"

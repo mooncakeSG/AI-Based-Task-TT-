@@ -1,0 +1,26 @@
+# Ultra-conservative requirements for guaranteed deployment
+# Core FastAPI dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+pydantic==2.5.0
+
+# AI functionality
+groq==0.29.0
+
+# HTTP client (conservative version)
+httpx==0.24.1
+
+# Essential utilities
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Image processing (essential for file uploads)
+Pillow==10.1.0
+
+# Text processing
+chardet==5.2.0
+
+# Lightweight document processing
+PyPDF2==3.0.1 

@@ -1,0 +1,23 @@
+# Ignore backend directory - we use Fly.io for backend
+backend/
+*.py
+*.sql
+requirements*.txt
+Dockerfile
+fly.toml
+Procfile
+runtime.txt
+
+# Ignore test files
+tests-archive/
+test_*.py
+test_*.html
+
+# Ignore deployment configs for other platforms
+deploy-*.sh
+deploy-*.ps1
+render.yaml
+*.md
+
+# Ignore uploads directory
+uploads/ 

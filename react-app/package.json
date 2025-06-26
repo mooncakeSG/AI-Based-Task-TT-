@@ -1,13 +1,14 @@
 {
-  "name": "react-app",
+  "name": "intelliassist-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "heroku-postbuild": "npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
