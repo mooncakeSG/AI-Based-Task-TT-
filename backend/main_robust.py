@@ -45,14 +45,17 @@ class EnvConfig:
         self.HF_API_KEY = os.getenv("HF_API_KEY", "")
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         
-        # CORS origins
+        # CORS origins (explicit domains work better than wildcards)
         self.CORS_ORIGINS = [
             "http://localhost:3000",
             "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "https://intelliassist-frontend-idaidfoq4-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-9pniapdi0-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-mjr0irfwc-mooncakesgs-projects.vercel.app",
-            "https://*.vercel.app",
-            "https://*.onrender.com"
+            # Add more specific Vercel domains that might be generated
+            "https://intelliassist-frontend-git-main-mooncakesgs-projects.vercel.app",
+            "https://intelliassist-frontend-mooncakesgs-projects.vercel.app"
         ]
         
         # Validate critical environment variables
@@ -201,21 +204,26 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add CORS middleware with more permissive settings for debugging
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"] if config.DEBUG else config.CORS_ORIGINS,  # Allow all origins in debug mode
+    allow_credentials=False if config.DEBUG else True,  # Disable credentials when using wildcard
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# Request logging middleware
+# Request logging middleware with CORS debugging
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     
-    logger.info(f"📥 {request.method} {request.url.path}")
+    # Log CORS-related headers for debugging
+    origin = request.headers.get("origin", "No origin header")
+    user_agent = request.headers.get("user-agent", "Unknown")[:50]
+    
+    logger.info(f"📥 {request.method} {request.url.path} - Origin: {origin}")
     
     try:
         response = await call_next(request)
