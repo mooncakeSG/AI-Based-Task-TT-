@@ -1,4 +1,4 @@
-# Version 3.2 - Manual CORS handling to fix OPTIONS 405 errors
+# Version 3.3 - Fixed middleware order for OPTIONS 200 response
 import logging
 import sys
 import time
@@ -204,32 +204,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Manual CORS middleware instead of CORSMiddleware
+# Combined CORS and logging middleware 
 @app.middleware("http")
-async def cors_handler(request: Request, call_next):
-    # Handle CORS preflight requests manually
-    if request.method == "OPTIONS":
-        response = Response()
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Max-Age"] = "86400"
-        return response
-    
-    # Process the request
-    response = await call_next(request)
-    
-    # Add CORS headers to all responses
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Expose-Headers"] = "*"
-    
-    return response
-
-# Request logging middleware with CORS debugging
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def cors_and_logging_handler(request: Request, call_next):
     start_time = time.time()
     
     # Log CORS-related headers for debugging
@@ -238,8 +215,28 @@ async def log_requests(request: Request, call_next):
     
     logger.info(f"📥 {request.method} {request.url.path} - Origin: {origin}")
     
+    # Handle CORS preflight requests manually FIRST
+    if request.method == "OPTIONS":
+        response = Response(status_code=200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        
+        process_time = time.time() - start_time
+        logger.info(f"📤 {response.status_code} OPTIONS - {process_time:.3f}s")
+        return response
+    
+    # Process regular requests
     try:
         response = await call_next(request)
+        
+        # Add CORS headers to all responses
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Expose-Headers"] = "*"
+        
         process_time = time.time() - start_time
         logger.info(f"📤 {response.status_code} - {process_time:.3f}s")
         return response
