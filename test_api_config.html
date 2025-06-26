@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Configuration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>🔧 API Configuration Test</h1>
+    <p>Testing API configuration from our codebase...</p>
+    
+    <div id="results"></div>
+
+    <script type="module">
+        const resultsDiv = document.getElementById('results');
+
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            resultsDiv.appendChild(div);
+        }
+
+        // Simulating our API configuration
+        const BACKEND_BASE = 'https://intelliassist-backend.fly.dev';
+        const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
+
+        addResult(`🎯 Expected Backend: ${BACKEND_BASE}`, 'info');
+        addResult(`🎯 Expected API URL: ${API_BASE_URL}`, 'info');
+
+        // Test the endpoints
+        async function testEndpoints() {
+            try {
+                // Test health endpoint
+                addResult('Testing health endpoint...', 'info');
+                const healthResponse = await fetch(`${BACKEND_BASE}/health`);
+                const healthData = await healthResponse.json();
+                addResult(`✅ Health check: ${JSON.stringify(healthData)}`, 'success');
+
+                // Test tasks endpoint
+                addResult('Testing tasks endpoint...', 'info');
+                const tasksResponse = await fetch(`${API_BASE_URL}/tasks`);
+                const tasksData = await tasksResponse.json();
+                addResult(`✅ Tasks endpoint: ${JSON.stringify(tasksData)}`, 'success');
+
+                // Test chat endpoint
+                addResult('Testing chat endpoint...', 'info');
+                const chatResponse = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Hello from test page!'
+                    })
+                });
+                const chatData = await chatResponse.json();
+                addResult(`✅ Chat endpoint: ${JSON.stringify(chatData)}`, 'success');
+
+            } catch (error) {
+                addResult(`❌ Test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Run tests
+        addResult('🚀 Starting API tests...', 'info');
+        testEndpoints();
+    </script>
+</body>
+</html> 
