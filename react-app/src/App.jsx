@@ -7,6 +7,7 @@ import SavedTasks from './components/SavedTasks';
 import Home from './pages/Home';
 import Upload from './pages/Upload';
 import About from './pages/About';
+import Profile from './pages/Profile';
 import { animations } from './styles/design-system';
 
 function App() {
@@ -22,6 +23,8 @@ function App() {
         return <SavedTasks className="h-full" />;
       case 'upload':
         return <Upload onNavigate={setCurrentPage} />;
+      case 'profile':
+        return <Profile />;
       case 'about':
         return <About />;
       default:

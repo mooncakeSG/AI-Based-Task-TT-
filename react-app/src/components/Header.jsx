@@ -1,14 +1,26 @@
 import { motion } from 'framer-motion';
-import { Home, MessageSquare, ListChecks, Upload, Menu, Sparkles } from 'lucide-react';
+import { Home, MessageSquare, ListChecks, Upload, Menu, Sparkles, LogIn, User } from 'lucide-react';
+import { useState } from 'react';
 import { animations } from '../styles/design-system';
+import AuthModal from './AuthModal';
+import UserProfile from './UserProfile';
+import { useAuth } from '../hooks/useAuth';
 
 const Header = ({ currentPage, onNavigate }) => {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
   const navigationItems = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'chat', label: 'Chat', icon: MessageSquare },
     { id: 'tasks', label: 'Tasks', icon: ListChecks },
     { id: 'upload', label: 'Upload', icon: Upload },
+    ...(isAuthenticated ? [{ id: 'profile', label: 'Profile', icon: User }] : []),
   ];
+
+  const handleAuthSuccess = (user) => {
+    console.log('User authenticated:', user);
+  };
 
   return (
     <motion.header 
@@ -38,39 +50,75 @@ const Header = ({ currentPage, onNavigate }) => {
             </div>
           </motion.div>
 
-          {/* Navigation */}
-          <nav className="hidden md:flex items-center space-x-1">
-            {navigationItems.map((item) => (
+          {/* Navigation & Auth */}
+          <div className="hidden md:flex items-center space-x-3">
+            {/* Navigation Items */}
+            <nav className="flex items-center space-x-1">
+              {navigationItems.map((item) => (
+                <motion.button
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                  className={`
+                    relative px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
+                    ${currentPage === item.id
+                      ? 'text-blue-600 bg-blue-50/80 backdrop-blur-sm shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/60 backdrop-blur-sm'
+                    }
+                  `}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="flex items-center gap-2">
+                    <item.icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </div>
+                  {currentPage === item.id && (
+                    <motion.div
+                      className="absolute inset-0 bg-blue-100/60 backdrop-blur-sm rounded-xl -z-10"
+                      layoutId="activeTab"
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                    />
+                  )}
+                </motion.button>
+              ))}
+            </nav>
+
+            {/* Authentication Section */}
+            {!isLoading && (
+              isAuthenticated ? (
+                <UserProfile />
+              ) : (
+                <motion.button
+                  onClick={() => setShowAuthModal(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-lg"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Sign In</span>
+                </motion.button>
+              )
+            )}
+          </div>
+
+          {/* Mobile Navigation & Auth */}
+          <div className="md:hidden flex items-center space-x-2">
+            {!isLoading && !isAuthenticated && (
               <motion.button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={`
-                  relative px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
-                  ${currentPage === item.id
-                    ? 'text-blue-600 bg-blue-50/80 backdrop-blur-sm shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60 backdrop-blur-sm'
-                  }
-                `}
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-xs font-medium rounded-lg transition-all duration-200"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <div className="flex items-center gap-2">
-                  <item.icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </div>
-                {currentPage === item.id && (
-                  <motion.div
-                    className="absolute inset-0 bg-blue-100/60 backdrop-blur-sm rounded-xl -z-10"
-                    layoutId="activeTab"
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                  />
-                )}
+                <LogIn className="w-3 h-3" />
+                <span>Sign In</span>
               </motion.button>
-            ))}
-          </nav>
+            )}
+            
+            {!isLoading && isAuthenticated && (
+              <UserProfile />
+            )}
 
-          {/* Mobile Navigation */}
-          <div className="md:hidden">
             <motion.button
               onClick={() => {
                 // Toggle mobile menu logic here if needed
@@ -108,6 +156,13 @@ const Header = ({ currentPage, onNavigate }) => {
           </div>
         </div>
       </div>
+
+      {/* Authentication Modal */}
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={handleAuthSuccess}
+      />
     </motion.header>
   );
 };
