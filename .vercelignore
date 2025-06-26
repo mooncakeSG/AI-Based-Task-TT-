@@ -8,7 +8,15 @@ fly.toml
 Procfile
 runtime.txt
 
+# Ignore test files
+test_*.py
+test_*.html
+
 # Ignore deployment configs for other platforms
 deploy-*.sh
 deploy-*.ps1
-render.yaml 
+render.yaml
+*.md
+
+# Ignore uploads directory
+uploads/ 
