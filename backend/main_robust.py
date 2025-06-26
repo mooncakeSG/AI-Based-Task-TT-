@@ -1,11 +1,10 @@
-# Version 3.1 - Fixed CORS OPTIONS handlers with explicit headers
+# Version 3.2 - Manual CORS handling to fix OPTIONS 405 errors
 import logging
 import sys
 import time
 import os
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -205,16 +204,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware with more permissive settings for debugging
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Completely open for debugging
-    allow_credentials=False,  # Must be False when using wildcard
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=86400,  # Cache preflight for 24 hours
-)
+# Manual CORS middleware instead of CORSMiddleware
+@app.middleware("http")
+async def cors_handler(request: Request, call_next):
+    # Handle CORS preflight requests manually
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        return response
+    
+    # Process the request
+    response = await call_next(request)
+    
+    # Add CORS headers to all responses
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    
+    return response
 
 # Request logging middleware with CORS debugging
 @app.middleware("http")
@@ -325,59 +336,6 @@ async def test_endpoint():
         "cors_enabled": True,
         "services": service_manager.services_loaded
     }
-
-# Add explicit OPTIONS handlers for CORS preflight with proper headers
-@app.options("/api/v1/tasks")
-async def options_tasks():
-    """Handle CORS preflight for tasks"""
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400"
-        }
-    )
-
-@app.options("/api/v1/chat")  
-async def options_chat():
-    """Handle CORS preflight for chat"""
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400"
-        }
-    )
-
-@app.options("/api/v1/test")
-async def options_test():
-    """Handle CORS preflight for test"""
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400"
-        }
-    )
-
-@app.options("/api/v1/status")
-async def options_status():
-    """Handle CORS preflight for status"""
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400"
-        }
-    )
 
 @app.get("/api/v1/tasks", response_model=TasksResponse)
 async def get_tasks():
