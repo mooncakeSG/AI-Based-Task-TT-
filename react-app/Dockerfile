@@ -12,6 +12,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Set the API URL for production build
+ENV VITE_API_URL=https://intelliassist-ai-backend-2025.fly.dev
+
 # Build the application
 RUN npm run build
 
