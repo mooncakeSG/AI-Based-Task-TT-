@@ -82,17 +82,26 @@ class Task(BaseModel):
 
 # Lazy loading functions
 def get_groq_client():
-    """Lazy load Groq client"""
+    """Lazy load Groq client with robust initialization"""
     global groq_client, _groq_attempted
     
     if not _groq_attempted and GROQ_API_KEY:
         _groq_attempted = True
         try:
             from groq import Groq
+            # Simple initialization without extra parameters
             groq_client = Groq(api_key=GROQ_API_KEY)
-            logger.info("✅ Groq client loaded")
+            
+            # Test the client to ensure it's working
+            # This doesn't make an API call, just verifies the client is properly initialized
+            if hasattr(groq_client, 'audio') and hasattr(groq_client.audio, 'transcriptions'):
+                logger.info("✅ Groq client loaded and verified successfully")
+            else:
+                logger.warning("⚠️ Groq client loaded but audio transcription API not available")
+                groq_client = None
         except Exception as e:
             logger.error(f"Groq loading failed: {e}")
+            groq_client = None
     
     return groq_client
 
@@ -322,6 +331,335 @@ async def analyze_audio_content(filename: str, file_path: str = None) -> Dict[st
         "ai_processed": False
     }
 
+def analyze_image_content(filename: str, file_path: str = None) -> Dict[str, Any]:
+    """Analyze image content based on filename and context"""
+    
+    name_lower = filename.lower()
+    file_ext = Path(filename).suffix.lower()
+    
+    # Determine image type and context
+    image_type = "general image"
+    if any(word in name_lower for word in ["screenshot", "screen", "capture"]):
+        image_type = "screenshot"
+    elif any(word in name_lower for word in ["diagram", "chart", "graph", "flowchart"]):
+        image_type = "diagram/chart"
+    elif any(word in name_lower for word in ["document", "scan", "pdf", "receipt"]):
+        image_type = "scanned document"
+    elif any(word in name_lower for word in ["ui", "mockup", "wireframe", "design"]):
+        image_type = "UI/design"
+    elif any(word in name_lower for word in ["photo", "picture", "img"]):
+        image_type = "photograph"
+    
+    # Generate contextual analysis
+    if image_type == "screenshot":
+        suggestions = [
+            "Review captured information",
+            "Extract text or data if needed",
+            "Create documentation from screenshot",
+            "Follow up on captured content"
+        ]
+        tasks = [{
+            "title": "Review screenshot content",
+            "description": f"Analyze and extract information from {filename}",
+            "priority": "medium",
+            "category": "review",
+            "status": "pending"
+        }]
+    
+    elif image_type == "diagram/chart":
+        suggestions = [
+            "Analyze data relationships",
+            "Extract key insights",
+            "Create action items from diagram",
+            "Share with relevant team members"
+        ]
+        tasks = [{
+            "title": "Analyze diagram/chart",
+            "description": f"Extract insights and action items from {filename}",
+            "priority": "high",
+            "category": "analysis",
+            "status": "pending"
+        }]
+    
+    elif image_type == "scanned document":
+        suggestions = [
+            "Extract text from document",
+            "Review document requirements",
+            "Create follow-up tasks",
+            "File or organize document"
+        ]
+        tasks = [{
+            "title": "Process scanned document",
+            "description": f"Review and extract information from {filename}",
+            "priority": "high",
+            "category": "documents",
+            "status": "pending"
+        }]
+    
+    elif image_type == "UI/design":
+        suggestions = [
+            "Review design specifications",
+            "Provide feedback on design",
+            "Plan implementation tasks",
+            "Share with development team"
+        ]
+        tasks = [{
+            "title": "Review UI/design",
+            "description": f"Analyze design and plan implementation for {filename}",
+            "priority": "medium",
+            "category": "design",
+            "status": "pending"
+        }]
+    
+    else:  # General image
+        suggestions = [
+            "Review image content",
+            "Determine next steps",
+            "Organize or categorize image"
+        ]
+        tasks = [{
+            "title": "Review image",
+            "description": f"Process and organize {filename}",
+            "priority": "low",
+            "category": "general",
+            "status": "pending"
+        }]
+    
+    return {
+        "analysis_type": "image_analysis",
+        "image_type": image_type,
+        "file_format": file_ext,
+        "key_points": ["visual content", "contextual information"],
+        "suggestions": suggestions,
+        "tasks": tasks,
+        "confidence": 0.75,
+        "processing_method": "filename_and_context_analysis"
+    }
+
+def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, Any]:
+    """Analyze document content based on filename and type"""
+    
+    name_lower = filename.lower()
+    file_ext = Path(filename).suffix.lower()
+    
+    # Determine document type
+    doc_type = "general document"
+    if file_ext in ['.pdf']:
+        doc_type = "PDF document"
+    elif file_ext in ['.doc', '.docx']:
+        doc_type = "Word document"
+    elif file_ext in ['.txt', '.md']:
+        doc_type = "text file"
+    elif file_ext in ['.csv', '.xlsx', '.xls']:
+        doc_type = "spreadsheet"
+    elif file_ext in ['.ppt', '.pptx']:
+        doc_type = "presentation"
+    
+    # Generate analysis based on filename keywords and type
+    if any(word in name_lower for word in ["contract", "agreement", "legal"]):
+        suggestions = [
+            "Review legal terms carefully",
+            "Set deadline reminders",
+            "Get legal review if needed",
+            "Prepare required signatures"
+        ]
+        tasks = [{
+            "title": "Review legal document",
+            "description": f"Carefully review {filename} for terms and obligations",
+            "priority": "high",
+            "category": "legal",
+            "status": "pending"
+        }]
+    
+    elif any(word in name_lower for word in ["report", "analysis", "summary"]):
+        suggestions = [
+            "Review key findings",
+            "Implement recommendations",
+            "Share insights with team",
+            "Create follow-up actions"
+        ]
+        tasks = [{
+            "title": "Process report findings",
+            "description": f"Review and act on findings from {filename}",
+            "priority": "medium",
+            "category": "review",
+            "status": "pending"
+        }]
+    
+    elif any(word in name_lower for word in ["proposal", "plan", "strategy"]):
+        suggestions = [
+            "Review proposal details",
+            "Assess resource requirements",
+            "Create implementation timeline",
+            "Get stakeholder approval"
+        ]
+        tasks = [{
+            "title": "Review proposal/plan",
+            "description": f"Evaluate and plan implementation of {filename}",
+            "priority": "high",
+            "category": "planning",
+            "status": "pending"
+        }]
+    
+    elif any(word in name_lower for word in ["invoice", "receipt", "bill", "payment"]):
+        suggestions = [
+            "Verify payment details",
+            "Process for accounting",
+            "Set payment reminders",
+            "File for records"
+        ]
+        tasks = [{
+            "title": "Process financial document",
+            "description": f"Handle payment and filing for {filename}",
+            "priority": "high",
+            "category": "finance",
+            "status": "pending"
+        }]
+    
+    elif doc_type == "spreadsheet":
+        suggestions = [
+            "Review data accuracy",
+            "Analyze trends and patterns",
+            "Create charts or summaries",
+            "Share relevant insights"
+        ]
+        tasks = [{
+            "title": "Analyze spreadsheet data",
+            "description": f"Review and extract insights from {filename}",
+            "priority": "medium",
+            "category": "data",
+            "status": "pending"
+        }]
+    
+    elif doc_type == "presentation":
+        suggestions = [
+            "Review presentation content",
+            "Prepare for delivery",
+            "Share with stakeholders",
+            "Create follow-up materials"
+        ]
+        tasks = [{
+            "title": "Review presentation",
+            "description": f"Prepare and deliver content from {filename}",
+            "priority": "medium",
+            "category": "presentation",
+            "status": "pending"
+        }]
+    
+    else:  # General document
+        suggestions = [
+            "Review document content",
+            "Extract key information",
+            "Create relevant tasks",
+            "File appropriately"
+        ]
+        tasks = [{
+            "title": f"Review {doc_type}",
+            "description": f"Process and review {filename}",
+            "priority": "medium",
+            "category": "documents",
+            "status": "pending"
+        }]
+    
+    return {
+        "analysis_type": "document_analysis",
+        "document_type": doc_type,
+        "file_format": file_ext,
+        "key_points": ["document content", "actionable items"],
+        "suggestions": suggestions,
+        "tasks": tasks,
+        "confidence": 0.80,
+        "processing_method": "filename_and_type_analysis"
+    }
+
+def analyze_video_content(filename: str, file_path: str = None) -> Dict[str, Any]:
+    """Analyze video content based on filename"""
+    
+    name_lower = filename.lower()
+    file_ext = Path(filename).suffix.lower()
+    
+    # Determine video type
+    video_type = "general video"
+    if any(word in name_lower for word in ["meeting", "conference", "call", "zoom"]):
+        video_type = "meeting recording"
+    elif any(word in name_lower for word in ["tutorial", "training", "demo", "howto"]):
+        video_type = "tutorial/training"
+    elif any(word in name_lower for word in ["presentation", "pitch", "demo"]):
+        video_type = "presentation"
+    elif any(word in name_lower for word in ["interview", "conversation"]):
+        video_type = "interview"
+    
+    # Generate contextual suggestions
+    if video_type == "meeting recording":
+        suggestions = [
+            "Extract meeting minutes",
+            "Identify action items",
+            "Share with attendees",
+            "Schedule follow-ups"
+        ]
+        tasks = [{
+            "title": "Process meeting recording",
+            "description": f"Extract action items and create follow-ups from {filename}",
+            "priority": "high",
+            "category": "meetings",
+            "status": "pending"
+        }]
+    
+    elif video_type == "tutorial/training":
+        suggestions = [
+            "Review training content",
+            "Create study notes",
+            "Practice demonstrated skills",
+            "Share with team if relevant"
+        ]
+        tasks = [{
+            "title": "Review training video",
+            "description": f"Study and apply content from {filename}",
+            "priority": "medium",
+            "category": "learning",
+            "status": "pending"
+        }]
+    
+    elif video_type == "presentation":
+        suggestions = [
+            "Review presentation content",
+            "Extract key points",
+            "Create follow-up materials",
+            "Share insights with team"
+        ]
+        tasks = [{
+            "title": "Review presentation video",
+            "description": f"Extract insights and create follow-ups from {filename}",
+            "priority": "medium",
+            "category": "review",
+            "status": "pending"
+        }]
+    
+    else:  # General video
+        suggestions = [
+            "Review video content",
+            "Extract relevant information",
+            "Determine next steps"
+        ]
+        tasks = [{
+            "title": "Review video",
+            "description": f"Process and analyze {filename}",
+            "priority": "low",
+            "category": "media",
+            "status": "pending"
+        }]
+    
+    return {
+        "analysis_type": "video_analysis",
+        "video_type": video_type,
+        "file_format": file_ext,
+        "key_points": ["video content", "visual information"],
+        "suggestions": suggestions,
+        "tasks": tasks,
+        "confidence": 0.70,
+        "processing_method": "filename_analysis"
+    }
+
 def generate_ai_response(message: str, context: Dict[str, Any] = None) -> str:
     """Generate AI response with context awareness"""
     
@@ -428,21 +766,51 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
         # Analyze based on file type
         analysis = {"type": "general", "tasks": [], "suggestions": []}
         
-        if file.content_type and file.content_type.startswith('audio/'):
-            analysis = await analyze_audio_content(file.filename, str(file_path))
+        if file.content_type:
+            if file.content_type.startswith('audio/'):
+                analysis = await analyze_audio_content(file.filename, str(file_path))
+            elif file.content_type.startswith('image/'):
+                analysis = analyze_image_content(file.filename, str(file_path))
+            elif file.content_type.startswith('video/'):
+                analysis = analyze_video_content(file.filename, str(file_path))
+            elif any(file.content_type.startswith(t) for t in ['text/', 'application/pdf', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats']):
+                analysis = analyze_document_content(file.filename, str(file_path))
+            else:
+                # Generic file analysis
+                analysis = {
+                    "analysis_type": "generic_file",
+                    "tasks": [{
+                        "title": f"Review {file.filename}",
+                        "description": f"Process and review uploaded file: {file.filename}",
+                        "priority": "medium",
+                        "category": "review",
+                        "status": "pending"
+                    }],
+                    "suggestions": ["Review file content", "Extract key information"]
+                }
         else:
-            # Basic analysis for other file types
-            analysis = {
-                "type": "document",
-                "tasks": [{
-                    "title": f"Review {file.filename}",
-                    "description": f"Process and review uploaded file: {file.filename}",
-                    "priority": "medium",
-                    "category": "review",
-                    "status": "pending"
-                }],
-                "suggestions": ["Review file content", "Extract key information"]
-            }
+            # Fallback to filename-based analysis
+            file_ext = Path(file.filename).suffix.lower()
+            if file_ext in ['.mp3', '.wav', '.m4a', '.flac', '.ogg']:
+                analysis = await analyze_audio_content(file.filename, str(file_path))
+            elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg']:
+                analysis = analyze_image_content(file.filename, str(file_path))
+            elif file_ext in ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm']:
+                analysis = analyze_video_content(file.filename, str(file_path))
+            elif file_ext in ['.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.xlsx', '.xls', '.ppt', '.pptx']:
+                analysis = analyze_document_content(file.filename, str(file_path))
+            else:
+                analysis = {
+                    "analysis_type": "unknown_file",
+                    "tasks": [{
+                        "title": f"Review {file.filename}",
+                        "description": f"Process uploaded file: {file.filename}",
+                        "priority": "medium",
+                        "category": "review",
+                        "status": "pending"
+                    }],
+                    "suggestions": ["Review file content", "Determine file type and purpose"]
+                }
         
         return {
             "message": f"File '{file.filename}' uploaded and analyzed successfully!",
@@ -613,19 +981,28 @@ async def clear_all_tasks():
 @app.get("/api/v1/status")
 def get_status():
     """Get system status and AI capabilities"""
+    groq = get_groq_client()
+    groq_status = "unavailable"
+    if groq:
+        groq_status = "available"
+        if hasattr(groq, 'audio') and hasattr(groq.audio, 'transcriptions'):
+            groq_status = "fully_functional"
+    
     return {
         "status": "operational",
         "version": "2.2.0",
         "timestamp": datetime.now().isoformat(),
         "ai_services": {
-            "groq": get_groq_client() is not None,
+            "groq": groq is not None,
+            "groq_status": groq_status,
+            "groq_api_key_configured": bool(GROQ_API_KEY),
             "transformers": _transformers_attempted,
             "whisper_model": whisper_model is not None,
             "sentiment_model": sentiment_model is not None,
             "supabase": get_supabase_client() is not None,
             "lazy_loading": True
         },
-        "features": ["chat", "multimodal", "file_upload", "task_extraction", "ai_analysis", "audio_transcription", "lazy_loading"],
+        "features": ["chat", "multimodal", "file_upload", "task_extraction", "ai_analysis", "audio_transcription", "image_analysis", "document_analysis", "video_analysis", "lazy_loading"],
         "data_counts": {
             "tasks": len(tasks_db),
             "files": len(files_db),

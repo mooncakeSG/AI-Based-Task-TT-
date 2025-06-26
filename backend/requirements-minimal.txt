@@ -1,20 +1,12 @@
+# Ultra-minimal FastAPI dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 aiofiles==23.2.1
-pydantic==1.10.17
-python-dotenv==1.0.0
-groq==0.4.1
-requests==2.31.0
-PyJWT==2.8.0
-email-validator==2.1.0
-supabase==2.16.0
-asyncpg==0.30.0
-sqlalchemy==2.0.23
-alembic==1.13.1
-psycopg2-binary==2.9.9
-loguru==0.7.2
-gunicorn==21.2.0
+pydantic==2.5.0
+
+# Only Groq for audio transcription (minimal AI) - Latest version
+groq==0.29.0
 
 # Minimal requirements - no image processing or heavy ML packages
 # This should build without wheel compilation issues 
