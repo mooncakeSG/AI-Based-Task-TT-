@@ -100,23 +100,16 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/upload/file`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          setUploadProgress(percentCompleted);
-        },
-        timeout: 120000, // 120 second timeout for AI processing
-      });
+      const response = await api.uploadFile(formData);
+      const responseData = await response.json();
+      
+      // Note: Progress tracking and timeout handling would need to be implemented 
+      // in the api.js uploadFile method if needed
 
-      console.log('📁 File processing result:', response.data);
+      console.log('📁 File processing result:', responseData);
       
       // Extract structured data from response
-      const processingDetails = response.data.processing_details || {};
+      const processingDetails = responseData.processing_details || {};
       const fileAnalysis = processingDetails.file_analysis || {};
       const suggestions = fileAnalysis.suggestions || [];
       const tasks = fileAnalysis.tasks || [];
@@ -124,13 +117,13 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
       
       const uploadMessage = {
         id: Date.now(),
-        message: response.data.response || `File "${file.name}" analyzed successfully!`,
+        message: responseData.response || `File "${file.name}" analyzed successfully!`,
         filename: file.name,
         size: file.size,
         timestamp: new Date(),
         success: true,
-        analysis: response.data.response,
-        processingDetails: response.data.processing_details,
+        analysis: responseData.response,
+        processingDetails: responseData.processing_details,
         suggestions: suggestions,
         tasks: tasks,
         metadata: {
@@ -165,10 +158,8 @@ const UploadBox = ({ onUploadComplete, className = "" }) => {
       console.error('Upload failed:', error);
       
       let errorMessage = 'Upload failed. Please try again.';
-      if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.code === 'ECONNABORTED') {
-        errorMessage = 'Processing timed out. Large images may take longer to analyze.';
+      if (error.message) {
+        errorMessage = error.message;
       }
 
       toast.error(errorMessage);
