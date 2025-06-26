@@ -763,54 +763,175 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
         }
         files_db[file_id] = file_info
         
-        # Analyze based on file type
+        # Analyze based on file type using AI service
         analysis = {"type": "general", "tasks": [], "suggestions": []}
         
         if file.content_type:
             if file.content_type.startswith('audio/'):
                 analysis = await analyze_audio_content(file.filename, str(file_path))
             elif file.content_type.startswith('image/'):
-                analysis = analyze_image_content(file.filename, str(file_path))
+                # Use AI service for proper image analysis
+                try:
+                    ai_result = await ai_service.process_image(str(file_path), "general")
+                    if ai_result.get("status") == "success":
+                        analysis = {
+                            "analysis_type": "ai_image_analysis",
+                            "description": ai_result.get("ai_insights", ai_result.get("description", "")),
+                            "image_type": ai_result.get("context_type", "general image"),
+                            "confidence": ai_result.get("confidence", 0.8),
+                            "tasks": ai_result.get("tasks", []),
+                            "suggestions": ai_result.get("suggestions", []),
+                            "metadata": ai_result.get("metadata", {}),
+                            "model_used": ai_result.get("model_used", "AI Vision"),
+                            "ai_processed": True
+                        }
+                    else:
+                        # Fallback to enhanced filename analysis
+                        analysis = ai_service._generate_fallback_response("image", file.filename)
+                        analysis["ai_processed"] = False
+                except Exception as e:
+                    logger.error(f"AI image processing failed: {e}")
+                    # Fallback to enhanced filename analysis
+                    analysis = ai_service._generate_fallback_response("image", file.filename)
+                    analysis["ai_processed"] = False
+                    
             elif file.content_type.startswith('video/'):
                 analysis = analyze_video_content(file.filename, str(file_path))
             elif any(file.content_type.startswith(t) for t in ['text/', 'application/pdf', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats']):
-                analysis = analyze_document_content(file.filename, str(file_path))
+                # Enhanced document processing
+                try:
+                    if file.content_type.startswith('text/') or file.content_type == 'text/plain':
+                        # Read and analyze text files with AI
+                        try:
+                            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                                text_content = await f.read()
+                            
+                            # Generate AI analysis for text content
+                            enhanced_prompt = f"""Analyze this text file content and provide comprehensive task management insights:
+
+FILE: {file.filename}
+CONTENT:
+{text_content[:2000]}{'...' if len(text_content) > 2000 else ''}
+
+Please provide:
+1. CONTENT OVERVIEW: What type of document is this?
+2. KEY INFORMATION: Most important points or data
+3. ACTIONABLE TASKS: Specific tasks or action items
+4. PRIORITIES: What appears urgent or time-sensitive?
+5. NEXT STEPS: Logical follow-up actions
+
+Focus on actionable, implementable recommendations for task management."""
+
+                            ai_result = await ai_service.generate_response(enhanced_prompt, context="Text file analysis")
+                            
+                            analysis = {
+                                "analysis_type": "ai_text_analysis", 
+                                "description": ai_result.get("response", "Text file analyzed successfully"),
+                                "document_type": "text file",
+                                "content_preview": text_content[:300] + "..." if len(text_content) > 300 else text_content,
+                                "tasks": ai_service._extract_tasks_from_response(ai_result.get("response", "")),
+                                "suggestions": ai_service._extract_suggestions_from_response(ai_result.get("response", "")),
+                                "metadata": {
+                                    "file_size": len(text_content),
+                                    "word_count": len(text_content.split()),
+                                    "ai_processed": True
+                                },
+                                "confidence": 0.9,
+                                "ai_processed": True
+                            }
+                            
+                        except UnicodeDecodeError:
+                            analysis = ai_service._generate_fallback_response("text", file.filename, "encoding_error")
+                            analysis["ai_processed"] = False
+                    else:
+                        # For PDFs and other documents, use enhanced fallback
+                        content_hint = "document"
+                        if file.content_type == 'application/pdf':
+                            content_hint = "pdf_document"
+                        elif 'word' in file.content_type:
+                            content_hint = "word_document"
+                        elif 'excel' in file.content_type or 'spreadsheet' in file.content_type:
+                            content_hint = "spreadsheet"
+                        elif 'powerpoint' in file.content_type or 'presentation' in file.content_type:
+                            content_hint = "presentation"
+                            
+                        analysis = ai_service._generate_fallback_response("pdf", file.filename, content_hint)
+                        analysis["ai_processed"] = False
+                        
+                except Exception as e:
+                    logger.error(f"Document processing failed: {e}")
+                    analysis = ai_service._generate_fallback_response("pdf", file.filename)
+                    analysis["ai_processed"] = False
             else:
-                # Generic file analysis
-                analysis = {
-                    "analysis_type": "generic_file",
-                    "tasks": [{
-                        "title": f"Review {file.filename}",
-                        "description": f"Process and review uploaded file: {file.filename}",
-                        "priority": "medium",
-                        "category": "review",
-                        "status": "pending"
-                    }],
-                    "suggestions": ["Review file content", "Extract key information"]
-                }
+                # Generic file analysis with enhanced fallback
+                analysis = ai_service._generate_fallback_response("generic", file.filename)
+                analysis["ai_processed"] = False
         else:
             # Fallback to filename-based analysis
             file_ext = Path(file.filename).suffix.lower()
             if file_ext in ['.mp3', '.wav', '.m4a', '.flac', '.ogg']:
                 analysis = await analyze_audio_content(file.filename, str(file_path))
             elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg']:
-                analysis = analyze_image_content(file.filename, str(file_path))
+                # Use AI service for image analysis
+                try:
+                    ai_result = await ai_service.process_image(str(file_path), "general")
+                    if ai_result.get("status") == "success":
+                        analysis = {
+                            "analysis_type": "ai_image_analysis",
+                            "description": ai_result.get("ai_insights", ai_result.get("description", "")),
+                            "image_type": ai_result.get("context_type", "general image"),
+                            "confidence": ai_result.get("confidence", 0.8),
+                            "tasks": ai_result.get("tasks", []),
+                            "suggestions": ai_result.get("suggestions", []),
+                            "metadata": ai_result.get("metadata", {}),
+                            "ai_processed": True
+                        }
+                    else:
+                        analysis = ai_service._generate_fallback_response("image", file.filename)
+                        analysis["ai_processed"] = False
+                except Exception as e:
+                    logger.error(f"AI image processing failed: {e}")
+                    analysis = ai_service._generate_fallback_response("image", file.filename)
+                    analysis["ai_processed"] = False
             elif file_ext in ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm']:
                 analysis = analyze_video_content(file.filename, str(file_path))
             elif file_ext in ['.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.xlsx', '.xls', '.ppt', '.pptx']:
-                analysis = analyze_document_content(file.filename, str(file_path))
+                if file_ext in ['.txt', '.md']:
+                    # Enhanced text file processing
+                    try:
+                        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                            text_content = await f.read()
+                        
+                        enhanced_prompt = f"""Analyze this text file and extract actionable insights:
+
+FILE: {file.filename}
+CONTENT:
+{text_content[:2000]}{'...' if len(text_content) > 2000 else ''}
+
+Provide specific, actionable recommendations for task management and productivity."""
+
+                        ai_result = await ai_service.generate_response(enhanced_prompt, context="Text file analysis")
+                        
+                        analysis = {
+                            "analysis_type": "ai_text_analysis",
+                            "description": ai_result.get("response", "Text file analyzed"),
+                            "document_type": "text file",
+                            "tasks": ai_service._extract_tasks_from_response(ai_result.get("response", "")),
+                            "suggestions": ai_service._extract_suggestions_from_response(ai_result.get("response", "")),
+                            "ai_processed": True
+                        }
+                    except Exception as e:
+                        logger.error(f"Text processing failed: {e}")
+                        analysis = ai_service._generate_fallback_response("text", file.filename)
+                        analysis["ai_processed"] = False
+                else:
+                    # Other document types - enhanced fallback
+                    doc_type = "pdf" if file_ext == '.pdf' else "document"
+                    analysis = ai_service._generate_fallback_response(doc_type, file.filename)
+                    analysis["ai_processed"] = False
             else:
-                analysis = {
-                    "analysis_type": "unknown_file",
-                    "tasks": [{
-                        "title": f"Review {file.filename}",
-                        "description": f"Process uploaded file: {file.filename}",
-                        "priority": "medium",
-                        "category": "review",
-                        "status": "pending"
-                    }],
-                    "suggestions": ["Review file content", "Determine file type and purpose"]
-                }
+                analysis = ai_service._generate_fallback_response("generic", file.filename)
+                analysis["ai_processed"] = False
         
         return {
             "message": f"File '{file.filename}' uploaded and analyzed successfully!",
@@ -820,7 +941,8 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
             "processing_details": {
                 "file_analysis": analysis,
                 "processing_time": "1.2s",
-                "ai_insights_enabled": True
+                "ai_insights_enabled": True,
+                "ai_processed": analysis.get("ai_processed", False)
             },
             "tasks": analysis.get("tasks", []),
             "suggestions": analysis.get("suggestions", [])
@@ -861,12 +983,46 @@ async def upload_audio_endpoint(file: UploadFile = File(...)):
         # Analyze audio
         audio_analysis = await analyze_audio_content(file.filename, str(file_path))
         
+        # Generate AI response for the transcription
+        transcription_text = audio_analysis.get("transcription", "")
+        ai_response = ""
+        
+        if transcription_text and audio_analysis.get("ai_processed", False):
+            # Create a helpful AI response based on the transcription
+            context = {
+                "audio_type": audio_analysis.get("audio_type", "general audio"),
+                "sentiment": audio_analysis.get("sentiment", "neutral"),
+                "key_topics": audio_analysis.get("key_topics", []),
+                "tasks_found": len(audio_analysis.get("tasks", []))
+            }
+            
+            ai_response = generate_ai_response(
+                f"I've successfully transcribed your audio message. Here's what I found:\n\n"
+                f"**Transcription:** {transcription_text[:200]}{'...' if len(transcription_text) > 200 else ''}\n\n"
+                f"**Analysis:** This appears to be {context['audio_type']} with a {context['sentiment']} tone. "
+                f"I've identified {context['tasks_found']} potential tasks from the content.\n\n"
+                f"How would you like to proceed with this information?",
+                context
+            )
+        else:
+            ai_response = "I've received your audio file, but wasn't able to transcribe it fully. This might be due to audio quality or configuration issues."
+        
+        # Return in the format expected by frontend
         return {
-            "transcription": audio_analysis["transcription"],
-            "file_id": file_id,
-            "analysis": audio_analysis,
+            "response": ai_response,
+            "processing_details": {
+                "transcription": {
+                    "text": transcription_text,
+                    "confidence": audio_analysis.get("confidence", 0.0),
+                    "language": "auto-detected"
+                },
+                "file_id": file_id,
+                "filename": file.filename,
+                "processing_time": "2.1s",
+                "ai_processed": audio_analysis.get("ai_processed", False)
+            },
             "tasks": audio_analysis.get("tasks", []),
-            "processing_time": "2.1s"
+            "analysis": audio_analysis
         }
         
     except Exception as e:

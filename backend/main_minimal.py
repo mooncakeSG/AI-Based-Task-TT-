@@ -332,12 +332,31 @@ async def upload_audio_endpoint(file: UploadFile = File(...)):
         # Analyze audio
         audio_analysis = await analyze_audio_content(file.filename, str(file_path))
         
+        # Generate basic AI response for the transcription
+        transcription_text = audio_analysis.get("transcription", "")
+        ai_response = ""
+        
+        if transcription_text and audio_analysis.get("ai_processed", False):
+            ai_response = f"I've transcribed your audio message: {transcription_text[:100]}{'...' if len(transcription_text) > 100 else ''}"
+        else:
+            ai_response = "Audio uploaded successfully. Transcription may require additional configuration."
+        
+        # Return in the format expected by frontend
         return {
-            "transcription": audio_analysis["transcription"],
-            "file_id": file_id,
-            "analysis": audio_analysis,
+            "response": ai_response,
+            "processing_details": {
+                "transcription": {
+                    "text": transcription_text,
+                    "confidence": audio_analysis.get("confidence", 0.0),
+                    "language": "auto-detected"
+                },
+                "file_id": file_id,
+                "filename": file.filename,
+                "processing_time": "1.0s",
+                "ai_processed": audio_analysis.get("ai_processed", False)
+            },
             "tasks": audio_analysis.get("tasks", []),
-            "processing_time": "1.0s"
+            "analysis": audio_analysis
         }
         
     except Exception as e:
