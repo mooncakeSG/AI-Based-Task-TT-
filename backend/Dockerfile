@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements-ai.txt .
-RUN pip install --no-cache-dir -r requirements-ai.txt
+COPY requirements-production.txt .
+RUN pip install --no-cache-dir -r requirements-production.txt
 
 # Copy application code
 COPY . .
@@ -23,4 +23,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
 # Run the application
-CMD ["python", "-m", "uvicorn", "main_ai_enhanced:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["python", "-m", "uvicorn", "main_production:app", "--host", "0.0.0.0", "--port", "8000"] 
