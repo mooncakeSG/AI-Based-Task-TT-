@@ -1,12 +1,31 @@
-# Ultra-minimal FastAPI dependencies
+# Ultra-minimal FastAPI dependencies with enhanced document processing
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 aiofiles==23.2.1
 pydantic==2.5.0
 
-# Only Groq for audio transcription (minimal AI) - Latest version
+# AI dependencies for full analysis features
 groq==0.29.0
+
+# Image processing and OCR
+Pillow==10.1.0
+
+# Document processing (PDF, Word, CSV)
+PyPDF2==3.0.1
+python-docx==1.1.0
+pandas==2.1.4
+
+# Additional utilities needed for AI service
+python-dotenv==1.0.0
+httpx>=0.26.0,<0.29.0
+requests==2.31.0
+
+# Database integration (Supabase)
+supabase==2.3.0
+
+# Enhanced text processing
+chardet==5.2.0
 
 # Minimal requirements - no image processing or heavy ML packages
 # This should build without wheel compilation issues 

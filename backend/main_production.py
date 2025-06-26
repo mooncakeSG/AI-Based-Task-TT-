@@ -46,32 +46,56 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Environment variables
+# Environment variables with better defaults
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-# Import AI service for fallback responses
+# Enhanced logging for debugging production issues
+logger.info(f"🔧 Environment Configuration:")
+logger.info(f"  - GROQ_API_KEY configured: {bool(GROQ_API_KEY)}")
+logger.info(f"  - SUPABASE_URL configured: {bool(SUPABASE_URL)}")
+logger.info(f"  - SUPABASE_SERVICE_KEY configured: {bool(SUPABASE_SERVICE_KEY)}")
+
+# Import AI service for fallback responses with enhanced error handling
 try:
-    from services.ai import ai_service
-    logger.info("✅ AI service imported successfully")
+    from services.ai import AIService
+    # Initialize AI service instance with proper configuration
+    ai_service = AIService()
     
-    # Debug: Check if ai_service is actually available
-    if ai_service:
-        logger.info(f"✅ AI service instance available: {type(ai_service)}")
-        if hasattr(ai_service, 'groq_client'):
-            logger.info(f"✅ Groq client status: {ai_service.groq_client is not None}")
-        if hasattr(ai_service, 'groq_api_key'):
-            logger.info(f"✅ Groq API key configured: {bool(ai_service.groq_api_key)}")
+    # Test if AI service is properly configured
+    if hasattr(ai_service, 'groq_client') and ai_service.groq_client:
+        logger.info("✅ AI service imported and configured successfully")
+        logger.info(f"✅ AI service Groq client available: {ai_service.groq_client is not None}")
     else:
-        logger.error("❌ AI service is None after import")
+        logger.warning("⚠️ AI service imported but Groq client not available")
         
 except ImportError as e:
-    logger.warning(f"⚠️ AI service import failed: {e}")
-    ai_service = None
+    logger.error(f"❌ AI service import failed: {e}")
+    logger.info("📝 Creating fallback AI service...")
+    # Create a minimal fallback AI service
+    class FallbackAIService:
+        def __init__(self):
+            self.groq_client = None
+            self.groq_api_key = GROQ_API_KEY
+            
+        def _generate_fallback_response(self, file_type: str, filename: str, content_hint: str = None):
+            return safe_fallback_response(file_type, filename, content_hint)
+    
+    ai_service = FallbackAIService()
+    logger.info("✅ Fallback AI service created")
+    
 except Exception as e:
     logger.error(f"❌ AI service initialization failed: {e}")
-    ai_service = None
+    logger.info("📝 Creating minimal AI service...")
+    class MinimalAIService:
+        def __init__(self):
+            self.groq_client = None
+            self.groq_api_key = GROQ_API_KEY
+        def _generate_fallback_response(self, file_type: str, filename: str, content_hint: str = None):
+            return safe_fallback_response(file_type, filename, content_hint)
+    ai_service = MinimalAIService()
+    logger.info("✅ Minimal AI service created")
 
 def safe_fallback_response(file_type: str, filename: str, content_hint: str = None):
     """Safely generate fallback response, with or without AI service"""
@@ -479,139 +503,219 @@ def analyze_image_content(filename: str, file_path: str = None) -> Dict[str, Any
     }
 
 def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, Any]:
-    """Analyze document content based on filename and type"""
+    """Enhanced document analysis with actual content extraction"""
     
     name_lower = filename.lower()
     file_ext = Path(filename).suffix.lower()
     
-    # Determine document type
-    doc_type = "general document"
-    if file_ext in ['.pdf']:
-        doc_type = "PDF document"
-    elif file_ext in ['.doc', '.docx']:
-        doc_type = "Word document"
-    elif file_ext in ['.txt', '.md']:
-        doc_type = "text file"
-    elif file_ext in ['.csv', '.xlsx', '.xls']:
-        doc_type = "spreadsheet"
-    elif file_ext in ['.ppt', '.pptx']:
-        doc_type = "presentation"
+    # Initialize variables
+    extracted_content = ""
+    content_type = "unknown"
+    processing_method = "filename_only"
     
-    # Generate analysis based on filename keywords and type
-    if any(word in name_lower for word in ["contract", "agreement", "legal"]):
-        suggestions = [
-            "Review legal terms carefully",
-            "Set deadline reminders",
-            "Get legal review if needed",
-            "Prepare required signatures"
-        ]
-        tasks = [{
-            "title": "Review legal document",
-            "description": f"Carefully review {filename} for terms and obligations",
-            "priority": "high",
-            "category": "legal",
-            "status": "pending"
-        }]
+    # Try to extract actual content if file path is provided
+    if file_path and Path(file_path).exists():
+        try:
+            if file_ext == '.pdf':
+                # Extract PDF content
+                try:
+                    import PyPDF2
+                    with open(file_path, 'rb') as file:
+                        pdf_reader = PyPDF2.PdfReader(file)
+                        extracted_content = ""
+                        for page in pdf_reader.pages:
+                            extracted_content += page.extract_text() + "\\n"
+                        content_type = "pdf_text"
+                        processing_method = "pdf_extraction"
+                        logger.info(f"✅ PDF content extracted: {len(extracted_content)} characters")
+                except Exception as pdf_error:
+                    logger.warning(f"PDF extraction failed: {pdf_error}")
+                    extracted_content = f"PDF document: {filename}"
+                    
+            elif file_ext in ['.docx', '.doc']:
+                # Extract Word document content
+                try:
+                    from docx import Document
+                    doc = Document(file_path)
+                    extracted_content = "\\n".join([paragraph.text for paragraph in doc.paragraphs])
+                    content_type = "word_text"
+                    processing_method = "docx_extraction"
+                    logger.info(f"✅ Word document content extracted: {len(extracted_content)} characters")
+                except Exception as docx_error:
+                    logger.warning(f"Word document extraction failed: {docx_error}")
+                    extracted_content = f"Word document: {filename}"
+                    
+            elif file_ext == '.csv':
+                # Analyze CSV structure and content
+                try:
+                    import pandas as pd
+                    import chardet
+                    
+                    # Detect encoding
+                    with open(file_path, 'rb') as f:
+                        raw_data = f.read()
+                        encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+                    
+                    # Read CSV
+                    df = pd.read_csv(file_path, encoding=encoding, nrows=100)  # Limit rows for analysis
+                    
+                    extracted_content = f"CSV Data Analysis:\\n"
+                    extracted_content += f"- Rows: {len(df)}\\n"
+                    extracted_content += f"- Columns: {len(df.columns)}\\n"
+                    extracted_content += f"- Column names: {list(df.columns)}\\n"
+                    extracted_content += f"- Data types: {df.dtypes.to_dict()}\\n"
+                    extracted_content += f"- First few rows:\\n{df.head(3).to_string()}\\n"
+                    
+                    content_type = "csv_data"
+                    processing_method = "pandas_analysis"
+                    logger.info(f"✅ CSV analysis completed: {len(df)} rows, {len(df.columns)} columns")
+                except Exception as csv_error:
+                    logger.warning(f"CSV analysis failed: {csv_error}")
+                    extracted_content = f"CSV file: {filename}"
+                    
+            elif file_ext in ['.txt', '.md', '.log']:
+                # Extract plain text content
+                try:
+                    import chardet
+                    
+                    # Detect encoding
+                    with open(file_path, 'rb') as f:
+                        raw_data = f.read()
+                        encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+                    
+                    # Read text content
+                    with open(file_path, 'r', encoding=encoding) as f:
+                        extracted_content = f.read()
+                        content_type = "plain_text"
+                        processing_method = "text_reading"
+                        logger.info(f"✅ Text content extracted: {len(extracted_content)} characters")
+                except Exception as txt_error:
+                    logger.warning(f"Text extraction failed: {txt_error}")
+                    extracted_content = f"Text file: {filename}"
+                    
+        except Exception as e:
+            logger.error(f"Document content extraction failed for {filename}: {e}")
+            extracted_content = f"Document: {filename}"
     
-    elif any(word in name_lower for word in ["report", "analysis", "summary"]):
-        suggestions = [
-            "Review key findings",
-            "Implement recommendations",
-            "Share insights with team",
-            "Create follow-up actions"
-        ]
-        tasks = [{
-            "title": "Process report findings",
-            "description": f"Review and act on findings from {filename}",
-            "priority": "medium",
-            "category": "review",
-            "status": "pending"
-        }]
+    # If no content extracted, use filename-based analysis
+    if not extracted_content:
+        extracted_content = f"Document: {filename}"
+        processing_method = "filename_only"
     
-    elif any(word in name_lower for word in ["proposal", "plan", "strategy"]):
-        suggestions = [
-            "Review proposal details",
-            "Assess resource requirements",
-            "Create implementation timeline",
-            "Get stakeholder approval"
-        ]
-        tasks = [{
-            "title": "Review proposal/plan",
-            "description": f"Evaluate and plan implementation of {filename}",
-            "priority": "high",
-            "category": "planning",
-            "status": "pending"
-        }]
+    # Use AI service for analysis if available and content was extracted
+    if ai_service and extracted_content and len(extracted_content) > len(filename) + 20:
+        try:
+            # Create AI analysis prompt
+            analysis_prompt = f\"\"\"
+            Analyze this document content and extract actionable tasks and insights:
+            
+            Document: {filename}
+            Content Type: {content_type}
+            Content: {extracted_content[:2000]}...  # Truncate for API limits
+            
+            Please provide:
+            1. A summary of the document
+            2. Any action items or tasks mentioned
+            3. Key insights or important information
+            4. Suggested next steps
+            \"\"\"
+            
+            # Try to get AI analysis (this would need to be implemented in the AI service)
+            if hasattr(ai_service, 'generate_response'):
+                ai_result = ai_service.generate_response(analysis_prompt)
+                if ai_result and ai_result.get('status') == 'success':
+                    return {
+                        "analysis_type": "ai_document_analysis",
+                        "filename": filename,
+                        "content_type": content_type,
+                        "processing_method": processing_method,
+                        "description": ai_result.get('response', ''),
+                        "extracted_content_preview": extracted_content[:500] + "..." if len(extracted_content) > 500 else extracted_content,
+                        "tasks": ai_result.get('tasks', []),
+                        "suggestions": [
+                            "Review the full document content",
+                            "Check for any action items mentioned",
+                            "Consider follow-up actions based on document type"
+                        ],
+                        "ai_processed": True,
+                        "content_length": len(extracted_content)
+                    }
+        except Exception as ai_error:
+            logger.warning(f"AI analysis failed for {filename}: {ai_error}")
     
-    elif any(word in name_lower for word in ["invoice", "receipt", "bill", "payment"]):
-        suggestions = [
-            "Verify payment details",
-            "Process for accounting",
-            "Set payment reminders",
-            "File for records"
-        ]
-        tasks = [{
-            "title": "Process financial document",
-            "description": f"Handle payment and filing for {filename}",
-            "priority": "high",
-            "category": "finance",
-            "status": "pending"
-        }]
+    # Fallback analysis based on content and filename
+    tasks = []
+    suggestions = []
     
-    elif doc_type == "spreadsheet":
-        suggestions = [
-            "Review data accuracy",
-            "Analyze trends and patterns",
-            "Create charts or summaries",
-            "Share relevant insights"
-        ]
-        tasks = [{
-            "title": "Analyze spreadsheet data",
-            "description": f"Review and extract insights from {filename}",
-            "priority": "medium",
-            "category": "data",
-            "status": "pending"
-        }]
+    # Extract tasks from content if available
+    if extracted_content and len(extracted_content) > len(filename) + 20:
+        extracted_tasks = extract_tasks_from_text(extracted_content)
+        tasks.extend(extracted_tasks)
     
-    elif doc_type == "presentation":
-        suggestions = [
-            "Review presentation content",
-            "Prepare for delivery",
-            "Share with stakeholders",
-            "Create follow-up materials"
-        ]
-        tasks = [{
-            "title": "Review presentation",
-            "description": f"Prepare and deliver content from {filename}",
-            "priority": "medium",
-            "category": "presentation",
-            "status": "pending"
-        }]
-    
-    else:  # General document
-        suggestions = [
-            "Review document content",
-            "Extract key information",
-            "Create relevant tasks",
-            "File appropriately"
-        ]
-        tasks = [{
-            "title": f"Review {doc_type}",
-            "description": f"Process and review {filename}",
+    # Add default tasks based on document type
+    if file_ext == '.pdf':
+        tasks.append({
+            "title": f"Review PDF document: {filename}",
+            "description": f"Analyze and process the PDF document content ({len(extracted_content)} characters extracted)",
             "priority": "medium",
             "category": "documents",
             "status": "pending"
-        }]
+        })
+        suggestions.extend([
+            "Check if the PDF contains forms that need to be filled",
+            "Look for any signatures or approvals required",
+            "Extract key information for future reference"
+        ])
+    elif file_ext in ['.docx', '.doc']:
+        tasks.append({
+            "title": f"Review Word document: {filename}",
+            "description": f"Process and analyze the Word document content ({len(extracted_content)} characters extracted)",
+            "priority": "medium",
+            "category": "documents",
+            "status": "pending"
+        })
+        suggestions.extend([
+            "Check for track changes or comments",
+            "Review document for required actions",
+            "Consider version control if collaborative"
+        ])
+    elif file_ext == '.csv':
+        tasks.append({
+            "title": f"Analyze CSV data: {filename}",
+            "description": f"Review and process the CSV data file ({processing_method})",
+            "priority": "medium",
+            "category": "data-analysis",
+            "status": "pending"
+        })
+        suggestions.extend([
+            "Check data quality and completeness",
+            "Look for patterns or insights in the data",
+            "Consider creating visualizations or reports"
+        ])
+    
+    # If no specific tasks found, add a general review task
+    if not tasks:
+        tasks.append({
+            "title": f"Review document: {filename}",
+            "description": f"Process and analyze the document content using {processing_method}",
+            "priority": "medium",
+            "category": "documents",
+            "status": "pending"
+        })
     
     return {
-        "analysis_type": "document_analysis",
-        "document_type": doc_type,
-        "file_format": file_ext,
-        "key_points": ["document content", "actionable items"],
-        "suggestions": suggestions,
+        "analysis_type": "enhanced_document_analysis",
+        "filename": filename,
+        "content_type": content_type,
+        "processing_method": processing_method,
+        "description": f"Document analysis completed using {processing_method}. " + 
+                      (f"Content extracted: {len(extracted_content)} characters." if extracted_content else "Filename-based analysis performed."),
+        "extracted_content_preview": extracted_content[:300] + "..." if len(extracted_content) > 300 else extracted_content,
         "tasks": tasks,
-        "confidence": 0.80,
-        "processing_method": "filename_and_type_analysis"
+        "suggestions": suggestions,
+        "ai_processed": False,  # True only if AI service successfully processed
+        "content_length": len(extracted_content),
+        "file_extension": file_ext
     }
 
 def analyze_video_content(filename: str, file_path: str = None) -> Dict[str, Any]:
