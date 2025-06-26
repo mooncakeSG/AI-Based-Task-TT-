@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-logger.info("🚀 Starting IntelliAssist.AI backend...")
+logger.info("🚀 Starting IntelliAssist.AI backend v2 with CORS fixes...")
 
 # ========================================
 # 🔒 SAFE ENVIRONMENT VARIABLE LOADING
