@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, User, Eye, EyeOff, Loader, AlertCircle, CheckCircle, Sparkles } from 'lucide-react';
 import { auth } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -136,7 +136,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 z-[9999] flex min-h-screen items-start justify-center pt-24 pb-8 px-4 overflow-y-auto sm:pt-32 sm:px-6 lg:px-8"
         variants={animations.fadeIn}
         initial="initial"
         animate="animate"
@@ -153,7 +153,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
 
         {/* Modal */}
         <motion.div
-          className="relative w-full max-w-md bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-gray-200/60 overflow-hidden"
+          className="relative w-full max-w-md transform rounded-3xl bg-white/95 backdrop-blur-md text-left align-middle shadow-2xl border border-gray-200/60 transition-all overflow-hidden"
           variants={animations.slideUp}
           initial="initial"
           animate="animate"

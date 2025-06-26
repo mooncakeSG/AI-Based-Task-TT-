@@ -1,7 +1,7 @@
 import React from 'react';
 import { MessageCircle, ArrowRight } from 'lucide-react';
 
-const AIResponseDisplay = ({ content, suggestions = [], tasks = [], metadata = {}, onNavigate, className = "", hideChatDirection = false }) => {
+const AIResponseDisplay = ({ content, suggestions = [], tasks = [], onNavigate, className = "", hideChatDirection = false }) => {
   if (!content && !suggestions?.length && !tasks?.length) return null;
 
   // Filter out chat direction content if hideChatDirection is true

@@ -362,7 +362,7 @@ const ChatBox = ({ className = "" }) => {
     setShowVoiceRecorder(false);
   };
 
-  const handleUploadBoxComplete = (uploadMessage, file) => {
+  const handleUploadBoxComplete = (uploadMessage) => {
     // Add the upload result as a message
     const uploadResultMessage = {
       id: uploadMessage.id,

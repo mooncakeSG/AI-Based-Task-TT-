@@ -35,12 +35,7 @@ const Home = ({ onNavigate }) => {
     }
   ];
 
-  const stats = [
-    { icon: CheckCircle, label: 'Tasks Completed', value: '10,000+', color: 'text-green-600' },
-    { icon: Clock, label: 'Avg Response Time', value: '< 2s', color: 'text-blue-600' },
-    { icon: Users, label: 'Active Users', value: '5,000+', color: 'text-purple-600' },
-    { icon: Zap, label: 'Uptime', value: '99.9%', color: 'text-yellow-600' }
-  ];
+
 
   const tips = [
     {

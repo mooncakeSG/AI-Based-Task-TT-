@@ -349,7 +349,7 @@ const Upload = ({ onNavigate }) => {
               className="space-y-4"
               variants={animations.staggerChildren}
             >
-              {uploadHistory.map((upload, index) => {
+              {uploadHistory.map((upload) => {
                 const FileIcon = getFileIcon(upload.type);
                 const StatusIcon = getStatusIcon(upload.status);
                 const isExpanded = expandedFiles.has(upload.id);
