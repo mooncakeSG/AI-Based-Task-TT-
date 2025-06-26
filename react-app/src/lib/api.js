@@ -1,15 +1,11 @@
-// API Configuration - Updated with CORS fix
-// Try Fly.io first, fallback to Render
-const DEFAULT_BACKENDS = [
-  'https://intelliassist-backend.fly.dev',
-  'https://intelliassist-bxl3.onrender.com'
-];
-
-const BACKEND_BASE = import.meta.env.VITE_API_BASE_URL || DEFAULT_BACKENDS[0];
+// API Configuration - FORCE Fly.io backend
+// FIXED: Using only Fly.io backend (working CORS)
+const BACKEND_BASE = 'https://intelliassist-backend.fly.dev';
 const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
 
-console.log('API Base URL:', API_BASE_URL);
-console.log('Backend:', BACKEND_BASE);
+console.log('🚀 FORCED API Base URL:', API_BASE_URL);
+console.log('🚀 FORCED Backend:', BACKEND_BASE);
+console.log('🚀 Environment override:', import.meta.env.VITE_API_BASE_URL);
 
 // Helper function to make API calls
 export const apiCall = async (endpoint, options = {}) => {

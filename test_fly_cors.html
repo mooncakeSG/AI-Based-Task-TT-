@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fly.io CORS Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Fly.io Backend CORS Test</h1>
+    <p>Testing cross-origin requests to: <strong>https://intelliassist-backend.fly.dev</strong></p>
+    
+    <button onclick="testHealth()">Test Health Endpoint</button>
+    <button onclick="testTasks()">Test Tasks Endpoint</button>
+    <button onclick="testCreateTask()">Test Create Task</button>
+    <button onclick="testPreflight()">Test Preflight (OPTIONS)</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'https://intelliassist-backend.fly.dev';
+        const resultsDiv = document.getElementById('results');
+
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            resultsDiv.appendChild(div);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        async function testHealth() {
+            addResult('Testing health endpoint...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                addResult(`✅ Health check successful: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ Health check failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testTasks() {
+            addResult('Testing tasks endpoint...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/tasks`);
+                const data = await response.json();
+                addResult(`✅ Tasks fetch successful: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ Tasks fetch failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCreateTask() {
+            addResult('Testing create task endpoint...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: 'Test Task from Fly.io',
+                        description: 'Testing CORS functionality',
+                        priority: 'medium'
+                    })
+                });
+                const data = await response.json();
+                addResult(`✅ Create task successful: ${JSON.stringify(data)}`, 'success');
+            } catch (error) {
+                addResult(`❌ Create task failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testPreflight() {
+            addResult('Testing preflight (OPTIONS) request...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/tasks`, {
+                    method: 'OPTIONS'
+                });
+                addResult(`✅ OPTIONS request successful: Status ${response.status}`, 'success');
+            } catch (error) {
+                addResult(`❌ OPTIONS request failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run basic test on page load
+        window.onload = () => {
+            addResult('🚀 Starting Fly.io CORS tests...', 'info');
+            setTimeout(testHealth, 1000);
+        };
+    </script>
+</body>
+</html> 
