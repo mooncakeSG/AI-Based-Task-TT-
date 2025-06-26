@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd react-app && npm ci && npm run build",
+  "outputDirectory": "react-app/dist",
+  "installCommand": "cd react-app && npm ci"
+} 

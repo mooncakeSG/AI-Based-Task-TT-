@@ -9,6 +9,7 @@ Procfile
 runtime.txt
 
 # Ignore test files
+tests-archive/
 test_*.py
 test_*.html
 
