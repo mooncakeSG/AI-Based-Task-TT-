@@ -528,6 +528,11 @@ def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, 
                         content_type = "pdf_text"
                         processing_method = "pdf_extraction"
                         logger.info(f"✅ PDF content extracted: {len(extracted_content)} characters")
+                except ImportError:
+                    logger.warning("PyPDF2 not available - using filename fallback")
+                    extracted_content = f"PDF document: {filename} (install PyPDF2 for content extraction)"
+                    content_type = "pdf_fallback"
+                    processing_method = "filename_fallback"
                 except Exception as pdf_error:
                     logger.warning(f"PDF extraction failed: {pdf_error}")
                     extracted_content = f"PDF document: {filename}"
@@ -541,14 +546,19 @@ def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, 
                     content_type = "word_text"
                     processing_method = "docx_extraction"
                     logger.info(f"✅ Word document content extracted: {len(extracted_content)} characters")
+                except ImportError:
+                    logger.warning("python-docx not available - using filename fallback")
+                    extracted_content = f"Word document: {filename} (install python-docx for content extraction)"
+                    content_type = "word_fallback"
+                    processing_method = "filename_fallback"
                 except Exception as docx_error:
                     logger.warning(f"Word document extraction failed: {docx_error}")
                     extracted_content = f"Word document: {filename}"
                     
             elif file_ext == '.csv':
-                # Analyze CSV structure and content
+                # Analyze CSV structure and content (lightweight without pandas)
                 try:
-                    import pandas as pd
+                    import csv
                     import chardet
                     
                     # Detect encoding
@@ -556,19 +566,32 @@ def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, 
                         raw_data = f.read()
                         encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
                     
-                    # Read CSV
-                    df = pd.read_csv(file_path, encoding=encoding, nrows=100)  # Limit rows for analysis
+                    # Read CSV with built-in csv module
+                    with open(file_path, 'r', encoding=encoding, newline='') as f:
+                        csv_reader = csv.reader(f)
+                        rows = list(csv_reader)
                     
-                    extracted_content = f"CSV Data Analysis:\\n"
-                    extracted_content += f"- Rows: {len(df)}\\n"
-                    extracted_content += f"- Columns: {len(df.columns)}\\n"
-                    extracted_content += f"- Column names: {list(df.columns)}\\n"
-                    extracted_content += f"- Data types: {df.dtypes.to_dict()}\\n"
-                    extracted_content += f"- First few rows:\\n{df.head(3).to_string()}\\n"
-                    
-                    content_type = "csv_data"
-                    processing_method = "pandas_analysis"
-                    logger.info(f"✅ CSV analysis completed: {len(df)} rows, {len(df.columns)} columns")
+                    if rows:
+                        headers = rows[0] if rows else []
+                        data_rows = rows[1:] if len(rows) > 1 else []
+                        
+                        extracted_content = f"CSV Data Analysis:\\n"
+                        extracted_content += f"- Total rows: {len(data_rows)}\\n"
+                        extracted_content += f"- Columns: {len(headers)}\\n"
+                        extracted_content += f"- Column names: {headers}\\n"
+                        
+                        # Show first few data rows
+                        if data_rows:
+                            extracted_content += f"- Sample data:\\n"
+                            for i, row in enumerate(data_rows[:3]):
+                                extracted_content += f"  Row {i+1}: {row}\\n"
+                        
+                        content_type = "csv_data"
+                        processing_method = "csv_builtin_analysis"
+                        logger.info(f"✅ CSV analysis completed: {len(data_rows)} rows, {len(headers)} columns")
+                    else:
+                        extracted_content = f"Empty CSV file: {filename}"
+                        
                 except Exception as csv_error:
                     logger.warning(f"CSV analysis failed: {csv_error}")
                     extracted_content = f"CSV file: {filename}"
@@ -606,7 +629,7 @@ def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, 
     if ai_service and extracted_content and len(extracted_content) > len(filename) + 20:
         try:
             # Create AI analysis prompt
-            analysis_prompt = f\"\"\"
+            analysis_prompt = f"""
             Analyze this document content and extract actionable tasks and insights:
             
             Document: {filename}
@@ -618,7 +641,7 @@ def analyze_document_content(filename: str, file_path: str = None) -> Dict[str, 
             2. Any action items or tasks mentioned
             3. Key insights or important information
             4. Suggested next steps
-            \"\"\"
+            """
             
             # Try to get AI analysis (this would need to be implemented in the AI service)
             if hasattr(ai_service, 'generate_response'):

@@ -1,36 +1,4 @@
-# Ultra-minimal FastAPI dependencies with enhanced document processing
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-aiofiles==23.2.1
-pydantic==2.5.0
-
-# AI dependencies for full analysis features
-groq==0.29.0
-
-# Image processing and OCR
-Pillow==10.1.0
-
-# Document processing (PDF, Word, CSV)
-PyPDF2==3.0.1
-python-docx==1.1.0
-pandas==2.1.4
-
-# Additional utilities needed for AI service
-python-dotenv==1.0.0
-httpx>=0.26.0,<0.29.0
-requests==2.31.0
-
-# Database integration (Supabase)
-supabase==2.3.0
-
-# Enhanced text processing
-chardet==5.2.0
-
-# Minimal requirements - no image processing or heavy ML packages
-# This should build without wheel compilation issues 
-
-# Core FastAPI dependencies
+# Ultra-minimal FastAPI dependencies for reliable deployment
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
@@ -40,17 +8,22 @@ pydantic==2.5.0
 # AI dependencies for analysis features
 groq==0.29.0
 
-# Use httpx version compatible with both groq and supabase
+# HTTP client compatible with groq and supabase
 httpx>=0.24.0,<0.25.0
 
 # Image processing (lightweight)
 Pillow==10.1.0
 
-# Additional utilities needed for AI service
+# Essential utilities
 python-dotenv==1.0.0
-
-# HTTP client for health checks
 requests==2.31.0
 
-# Optional database - remove if causing conflicts
-# supabase==2.3.0 
+# Document processing (lightweight alternatives)
+PyPDF2==3.0.1
+python-docx==1.1.0
+
+# Text processing (lightweight)
+chardet==5.2.0
+
+# Database integration
+supabase==2.3.0 
