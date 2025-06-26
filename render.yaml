@@ -4,7 +4,7 @@ services:
     env: python
     region: oregon
     buildCommand: pip install -r backend/requirements-core-only.txt
-    startCommand: cd backend && python main.py
+    startCommand: cd backend && python -m uvicorn main_debug:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PORT
         value: 10000
@@ -14,13 +14,13 @@ services:
         value: "https://intelliassist-frontend.onrender.com,http://localhost:3000"
       - key: SUPABASE_URL
         fromGroup: supabase
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: SUPABASE_SERVICE_KEY
         fromGroup: supabase
       - key: SUPABASE_ANON_KEY
         fromGroup: supabase
-      - key: HUGGINGFACE_API_KEY
+      - key: HF_API_KEY
         fromGroup: ai-keys
-      - key: OPENAI_API_KEY
+      - key: GROQ_API_KEY
         fromGroup: ai-keys
     healthCheckPath: /health
     
