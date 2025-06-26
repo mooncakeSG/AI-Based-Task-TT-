@@ -80,7 +80,13 @@ except ImportError as e:
             self.groq_api_key = GROQ_API_KEY
             
         def _generate_fallback_response(self, file_type: str, filename: str, content_hint: str = None):
-            return safe_fallback_response(file_type, filename, content_hint)
+            # Direct fallback without calling safe_fallback_response to prevent recursion
+            return {
+                "analysis": f"File '{filename}' uploaded successfully. AI service is in fallback mode.",
+                "tasks": [{"title": f"Review {filename}", "description": f"Process and analyze {filename}", "priority": "medium", "category": "general", "status": "pending"}],
+                "suggestions": ["Review file content", "Extract key information", "Create follow-up tasks as needed"],
+                "ai_processed": False
+            }
     
     ai_service = FallbackAIService()
     logger.info("✅ Fallback AI service created")
@@ -93,29 +99,46 @@ except Exception as e:
             self.groq_client = None
             self.groq_api_key = GROQ_API_KEY
         def _generate_fallback_response(self, file_type: str, filename: str, content_hint: str = None):
-            return safe_fallback_response(file_type, filename, content_hint)
+            # Direct fallback without calling safe_fallback_response to prevent recursion
+            return {
+                "analysis": f"File '{filename}' uploaded successfully. AI service is in minimal mode.",
+                "tasks": [{"title": f"Review {filename}", "description": f"Process and analyze {filename}", "priority": "medium", "category": "general", "status": "pending"}],
+                "suggestions": ["Review file content", "Extract key information", "Create follow-up tasks as needed"],
+                "ai_processed": False
+            }
     ai_service = MinimalAIService()
     logger.info("✅ Minimal AI service created")
 
 def safe_fallback_response(file_type: str, filename: str, content_hint: str = None):
     """Safely generate fallback response, with or without AI service"""
-    if ai_service:
-        return ai_service._generate_fallback_response(file_type, filename, content_hint)
+    if ai_service and hasattr(ai_service, '_generate_fallback_response'):
+        try:
+            return ai_service._generate_fallback_response(file_type, filename, content_hint)
+        except Exception as e:
+            logger.warning(f"AI service fallback failed: {e}")
+    
+    # Basic fallback responses without calling other analysis functions (prevent recursion)
+    if file_type == "image":
+        return {
+            "analysis": f"Image '{filename}' uploaded successfully. This appears to be a visual document.",
+            "tasks": [{"title": f"Review image: {filename}", "description": "Review the uploaded image for important information", "priority": "medium", "category": "review", "status": "pending"}],
+            "suggestions": ["Review the image content", "Extract any text if needed", "Check for important visual information"],
+            "ai_processed": False
+        }
+    elif file_type in ["text", "pdf", "document"]:
+        return {
+            "analysis": f"Document '{filename}' uploaded successfully. Ready for review and processing.",
+            "tasks": [{"title": f"Review document: {filename}", "description": "Process and analyze the document content", "priority": "medium", "category": "documents", "status": "pending"}],
+            "suggestions": ["Review document content", "Extract key information", "Create follow-up tasks as needed"],
+            "ai_processed": False
+        }
     else:
-        # Basic fallback if AI service is not available
-        if file_type == "image":
-            return analyze_image_content(filename)
-        elif file_type == "text":
-            return analyze_document_content(filename)
-        elif file_type == "pdf":
-            return analyze_document_content(filename)
-        else:
-            return {
-                "analysis": f"File '{filename}' uploaded successfully.",
-                "tasks": [{"title": f"Review {filename}", "description": f"Process {filename}", "priority": "medium", "category": "general", "status": "pending"}],
-                "suggestions": ["Review file content"],
-                "ai_processed": False
-            }
+        return {
+            "analysis": f"File '{filename}' uploaded successfully.",
+            "tasks": [{"title": f"Review {filename}", "description": f"Process {filename}", "priority": "medium", "category": "general", "status": "pending"}],
+            "suggestions": ["Review file content"],
+            "ai_processed": False
+        }
 
 # Global AI service variables (lazy loaded)
 groq_client = None
@@ -1041,7 +1064,13 @@ Focus on actionable, implementable recommendations for task management."""
                         
                 except Exception as e:
                     logger.error(f"Document processing failed: {e}")
-                    analysis = safe_fallback_response("pdf", file.filename)
+                    # Simple direct fallback to prevent recursion
+                    analysis = {
+                        "analysis": f"Document '{file.filename}' uploaded successfully but processing failed.",
+                        "tasks": [{"title": f"Review document: {file.filename}", "description": "Document needs manual review", "priority": "medium", "category": "documents", "status": "pending"}],
+                        "suggestions": ["Review document content manually", "Check file format", "Try re-uploading"],
+                        "ai_processed": False
+                    }
             else:
                 # Generic file analysis with enhanced fallback
                 analysis = safe_fallback_response("generic", file.filename)
