@@ -1,4 +1,4 @@
-# Version 3.4 - Robust CORS with proper origins and credentials support
+# Version 3.5 - Standard Starlette CORSMiddleware with proper configuration
 import logging
 import sys
 import time
@@ -6,6 +6,7 @@ import os
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
@@ -47,16 +48,21 @@ class EnvConfig:
         
         # CORS origins (explicit domains work better than wildcards)
         self.CORS_ORIGINS = [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
             "https://intelliassist-frontend-idaidfoq4-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-9pniapdi0-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-mjr0irfwc-mooncakesgs-projects.vercel.app",
-            # Add more specific Vercel domains that might be generated
             "https://intelliassist-frontend-git-main-mooncakesgs-projects.vercel.app",
             "https://intelliassist-frontend-mooncakesgs-projects.vercel.app"
         ]
+        
+        # Add development origins in non-production environments
+        if self.ENVIRONMENT != "production":
+            self.CORS_ORIGINS.extend([
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000"
+            ])
         
         # Validate critical environment variables
         self._validate_env_vars()
@@ -204,59 +210,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Robust CORS middleware with proper origin handling
-@app.middleware("http")
-async def cors_middleware(request: Request, call_next):
-    # Get request origin
-    origin = request.headers.get("origin")
-    
-    # Determine if origin is allowed
-    allowed_origin = None
-    if origin:
-        if origin in config.CORS_ORIGINS:
-            allowed_origin = origin
-        # For development, also allow localhost variants
-        elif config.DEBUG and any(localhost in origin for localhost in ["localhost", "127.0.0.1"]):
-            allowed_origin = origin
-    
-    # Handle OPTIONS preflight requests
-    if request.method == "OPTIONS":
-        response = Response(status_code=200)
-        
-        # Set CORS headers for preflight
-        if allowed_origin:
-            response.headers["Access-Control-Allow-Origin"] = allowed_origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        else:
-            # Fallback for debugging - remove in production
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Credentials"] = "false"
-            
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Accept, Accept-Language, Content-Language, Content-Type, Authorization, X-Requested-With"
-        response.headers["Access-Control-Max-Age"] = "86400"
-        
-        return response
-    
-    # Process regular requests
-    response = await call_next(request)
-    
-    # Add CORS headers to response
-    if allowed_origin:
-        response.headers["Access-Control-Allow-Origin"] = allowed_origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    else:
-        # Fallback for debugging - remove in production
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "false"
-        
-    response.headers["Access-Control-Expose-Headers"] = "Content-Length, Content-Type"
-    
-    return response
+# ✅ CORS Middleware - Added FIRST before any other middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["Content-Disposition"],
+    max_age=86400  # Cache preflight for 24h
+)
 
-# Request logging middleware (separate from CORS)
+# ✅ Request logging middleware AFTER CORS
 @app.middleware("http")
-async def logging_middleware(request: Request, call_next):
+async def log_requests(request: Request, call_next):
     start_time = time.time()
     
     # Log request details
@@ -421,14 +388,11 @@ async def chat_endpoint(request: ChatRequest):
         ai_service_used=ai_service_used
     )
 
-# Explicit OPTIONS handlers for all API routes
-@app.options("/api/v1/tasks")
-@app.options("/api/v1/chat") 
-@app.options("/api/v1/status")
-@app.options("/api/v1/test")
-async def handle_options():
-    """Handle OPTIONS preflight for all API routes"""
-    return Response(status_code=200)
+# ✅ OPTIONS Route Backup (Failsafe) - Catch-all for any missed preflight requests
+@app.options("/{full_path:path}")
+async def preflight_handler():
+    """Universal OPTIONS handler for CORS preflight"""
+    return JSONResponse(status_code=200, content={"message": "CORS preflight OK"})
 
 logger.info("✅ FastAPI application setup complete")
 
