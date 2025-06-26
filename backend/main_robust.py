@@ -3,7 +3,7 @@ import sys
 import time
 import os
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -327,12 +327,24 @@ async def test_endpoint():
 
 # Add explicit OPTIONS handlers for CORS preflight
 @app.options("/api/v1/tasks")
+async def options_tasks():
+    """Handle CORS preflight for tasks"""
+    return Response(status_code=200)
+
 @app.options("/api/v1/chat")  
+async def options_chat():
+    """Handle CORS preflight for chat"""
+    return Response(status_code=200)
+
 @app.options("/api/v1/test")
+async def options_test():
+    """Handle CORS preflight for test"""
+    return Response(status_code=200)
+
 @app.options("/api/v1/status")
-async def options_handler():
-    """Handle CORS preflight requests"""
-    return {"message": "CORS preflight OK"}
+async def options_status():
+    """Handle CORS preflight for status"""
+    return Response(status_code=200)
 
 @app.get("/api/v1/tasks", response_model=TasksResponse)
 async def get_tasks():
