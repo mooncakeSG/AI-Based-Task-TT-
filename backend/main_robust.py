@@ -1,4 +1,4 @@
-# Version 3.3 - Fixed middleware order for OPTIONS 200 response
+# Version 3.4 - Robust CORS with proper origins and credentials support
 import logging
 import sys
 import time
@@ -204,39 +204,67 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Combined CORS and logging middleware 
+# Robust CORS middleware with proper origin handling
 @app.middleware("http")
-async def cors_and_logging_handler(request: Request, call_next):
-    start_time = time.time()
+async def cors_middleware(request: Request, call_next):
+    # Get request origin
+    origin = request.headers.get("origin")
     
-    # Log CORS-related headers for debugging
-    origin = request.headers.get("origin", "No origin header")
-    user_agent = request.headers.get("user-agent", "Unknown")[:50]
+    # Determine if origin is allowed
+    allowed_origin = None
+    if origin:
+        if origin in config.CORS_ORIGINS:
+            allowed_origin = origin
+        # For development, also allow localhost variants
+        elif config.DEBUG and any(localhost in origin for localhost in ["localhost", "127.0.0.1"]):
+            allowed_origin = origin
     
-    logger.info(f"📥 {request.method} {request.url.path} - Origin: {origin}")
-    
-    # Handle CORS preflight requests manually FIRST
+    # Handle OPTIONS preflight requests
     if request.method == "OPTIONS":
         response = Response(status_code=200)
-        response.headers["Access-Control-Allow-Origin"] = "*"
+        
+        # Set CORS headers for preflight
+        if allowed_origin:
+            response.headers["Access-Control-Allow-Origin"] = allowed_origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        else:
+            # Fallback for debugging - remove in production
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "false"
+            
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Accept, Accept-Language, Content-Language, Content-Type, Authorization, X-Requested-With"
         response.headers["Access-Control-Max-Age"] = "86400"
         
-        process_time = time.time() - start_time
-        logger.info(f"📤 {response.status_code} OPTIONS - {process_time:.3f}s")
         return response
     
     # Process regular requests
+    response = await call_next(request)
+    
+    # Add CORS headers to response
+    if allowed_origin:
+        response.headers["Access-Control-Allow-Origin"] = allowed_origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    else:
+        # Fallback for debugging - remove in production
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "false"
+        
+    response.headers["Access-Control-Expose-Headers"] = "Content-Length, Content-Type"
+    
+    return response
+
+# Request logging middleware (separate from CORS)
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    start_time = time.time()
+    
+    # Log request details
+    origin = request.headers.get("origin", "No origin")
+    logger.info(f"📥 {request.method} {request.url.path} - Origin: {origin}")
+    
     try:
         response = await call_next(request)
-        
-        # Add CORS headers to all responses
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Expose-Headers"] = "*"
-        
         process_time = time.time() - start_time
         logger.info(f"📤 {response.status_code} - {process_time:.3f}s")
         return response
@@ -392,6 +420,15 @@ async def chat_endpoint(request: ChatRequest):
         timestamp=time.time(),
         ai_service_used=ai_service_used
     )
+
+# Explicit OPTIONS handlers for all API routes
+@app.options("/api/v1/tasks")
+@app.options("/api/v1/chat") 
+@app.options("/api/v1/status")
+@app.options("/api/v1/test")
+async def handle_options():
+    """Handle OPTIONS preflight for all API routes"""
+    return Response(status_code=200)
 
 logger.info("✅ FastAPI application setup complete")
 
