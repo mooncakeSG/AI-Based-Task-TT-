@@ -4,6 +4,7 @@ import { RefreshCw, Trash2, CheckCircle, Clock, AlertCircle, ClipboardList, Tag,
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { animations } from '../styles/design-system';
+import { API_ENDPOINTS } from '../config/api';
 
 const SavedTasks = ({ className = "" }) => {
   const [tasks, setTasks] = useState([]);
@@ -15,7 +16,7 @@ const SavedTasks = ({ className = "" }) => {
     setError(null);
     
     try {
-      const response = await axios.get('http://localhost:8000/api/v1/tasks', {
+      const response = await axios.get(API_ENDPOINTS.tasks, {
         timeout: 10000,
       });
       
@@ -37,7 +38,7 @@ const SavedTasks = ({ className = "" }) => {
     }
 
     try {
-      await axios.delete('http://localhost:8000/api/v1/tasks', {
+      await axios.delete(API_ENDPOINTS.tasks, {
         timeout: 10000,
       });
       
@@ -56,7 +57,7 @@ const SavedTasks = ({ className = "" }) => {
     }
 
     try {
-      await axios.delete(`http://localhost:8000/api/v1/tasks/${taskId}`, {
+      await axios.delete(`${API_ENDPOINTS.tasks}/${taskId}`, {
         timeout: 10000,
       });
       
@@ -81,7 +82,7 @@ const SavedTasks = ({ className = "" }) => {
     const newStatus = statusCycle[currentStatus] || 'pending';
     
     try {
-      await axios.put(`http://localhost:8000/api/v1/tasks/${taskId}`, {
+      await axios.put(`${API_ENDPOINTS.tasks}/${taskId}`, {
         status: newStatus
       }, {
         timeout: 10000,

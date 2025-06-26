@@ -16,26 +16,26 @@ psycopg2-binary==2.9.9
 asyncio-mqtt>=0.13.0
 loguru>=0.7.2
 
-# Additional dependencies for multimodal AI
-huggingface-hub>=0.19.0
-transformers>=4.36.0
+# Additional dependencies for multimodal AI (commented out for lighter deployment)
+# huggingface-hub>=0.19.0
+# transformers>=4.36.0
 
 # Database dependencies
 sqlalchemy>=2.0.0
 alembic>=1.13.0
 
-# Testing dependencies
-pytest==8.0.2
-pytest-asyncio==0.24.0
-pytest-cov==5.0.0
-httpx==0.26.0
+# Testing dependencies (commented out for production)
+# pytest==8.2.0
+# pytest-asyncio==0.24.0
+# pytest-cov==5.0.0
+httpx==0.25.2
 
 # Monitoring and metrics
 dataclasses-json==0.6.3
 
-# Image processing dependencies
-torch==2.1.0
-torchvision==0.16.0
+# Image processing dependencies (commented out for lighter deployment)
+# torch==2.1.0
+# torchvision==0.16.0
 
 # PIL/Pillow is required for image processing
 # torch and torchvision for BLIP model

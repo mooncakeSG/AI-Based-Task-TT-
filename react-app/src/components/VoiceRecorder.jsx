@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { API_ENDPOINTS } from '../config/api';
 
 const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -140,7 +141,7 @@ const VoiceRecorder = ({ onRecordingComplete, maxDuration = 120 }) => {
       });
       formData.append('file', audioFile);
 
-      const response = await fetch('http://localhost:8000/api/v1/upload/audio', {
+      const response = await fetch(API_ENDPOINTS.uploadAudio, {
         method: 'POST',
         body: formData,
       });

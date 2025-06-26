@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { API_ENDPOINTS } from '../config/api';
 
 const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize = 5 * 1024 * 1024 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -69,7 +70,7 @@ const FileUpload = ({ onFileUpload, acceptedTypes = 'image/*,audio/*', maxSize =
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/upload', {
+      const response = await fetch(API_ENDPOINTS.upload, {
         method: 'POST',
         body: formData,
       });

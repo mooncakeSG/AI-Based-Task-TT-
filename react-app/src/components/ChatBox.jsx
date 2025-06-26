@@ -8,6 +8,7 @@ import VoiceRecorder from './VoiceRecorder';
 import AIResponseDisplay from './AIResponseDisplay';
 import { animations } from '../styles/design-system';
 import { supabase } from '../lib/supabase';
+import { API_ENDPOINTS } from '../config/api';
 
 // Component for displaying extracted tasks with save options
 const TaskSavePrompt = ({ tasks, onSave, onDismiss }) => {
@@ -185,7 +186,7 @@ const ChatBox = ({ className = "" }) => {
 
       // Choose endpoint based on input type
       const isMultimodal = attachedFiles.length > 0;
-      const endpoint = isMultimodal ? 'http://localhost:8000/api/v1/multimodal' : 'http://localhost:8000/api/v1/chat';
+      const endpoint = isMultimodal ? API_ENDPOINTS.multimodal : API_ENDPOINTS.chat;
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -318,7 +319,7 @@ const ChatBox = ({ className = "" }) => {
         
         // Try to extract and save tasks from the AI response
         try {
-          const taskExtractionResponse = await fetch('http://localhost:8000/api/v1/chat', {
+          const taskExtractionResponse = await fetch(API_ENDPOINTS.chat, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

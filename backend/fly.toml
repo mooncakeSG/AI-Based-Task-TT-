@@ -1,4 +1,4 @@
-app = "ai-task-backend"
+app = "intelliassist-ai-backend-2025"
 primary_region = "iad"
 
 [build]
