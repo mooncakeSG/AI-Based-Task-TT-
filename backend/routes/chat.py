@@ -15,6 +15,16 @@ from config.settings import settings, get_allowed_file_types
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Simple test endpoint for debugging CORS/API connection
+@router.get("/test")
+async def test_endpoint():
+    """Simple test endpoint to verify API connectivity"""
+    return {
+        "status": "success",
+        "message": "API connection working",
+        "timestamp": time.time()
+    }
+
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000, description="User message")
@@ -77,8 +87,7 @@ class MultimodalResponse(BaseModel):
 @router.get("/tasks", response_model=TasksResponse)
 async def get_tasks(
     request: Request,
-    user_id: Optional[str] = None,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    user_id: Optional[str] = None
 ):
     """
     Get all saved tasks
@@ -90,11 +99,9 @@ async def get_tasks(
         TasksResponse: List of tasks with metadata
     """
     try:
-        # Determine user ID - prioritize authenticated user, then URL parameter
+        # Determine user ID - prioritize URL parameter, then try to extract from request
         effective_user_id = None
-        if current_user:
-            effective_user_id = current_user.get("id")
-        elif user_id:
+        if user_id:
             effective_user_id = user_id
         else:
             # Try to extract from request headers for backwards compatibility
@@ -151,8 +158,7 @@ async def get_tasks(
 @router.post("/tasks", response_model=TaskModel)
 async def create_task(
     task: TaskModel,
-    request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    request: Request
 ):
     """
     Create a new task
@@ -169,10 +175,8 @@ async def create_task(
         # Convert to dict for database
         task_data = task.model_dump(exclude_none=True)
         
-        # Set user ID if authenticated
-        if current_user:
-            task_data["user_id"] = current_user.get("id")
-        elif not task_data.get("user_id"):
+        # Set user ID if not provided
+        if not task_data.get("user_id"):
             # Try to extract from request headers for backwards compatibility
             task_data["user_id"] = extract_user_id_from_request(request)
         
@@ -289,8 +293,7 @@ async def delete_task(task_id: int):
 @router.delete("/tasks")
 async def clear_tasks(
     request: Request,
-    user_id: Optional[str] = None,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    user_id: Optional[str] = None
 ):
     """
     Clear all tasks
@@ -302,11 +305,9 @@ async def clear_tasks(
         dict: Success message
     """
     try:
-        # Determine user ID - prioritize authenticated user, then URL parameter
+        # Determine user ID - prioritize URL parameter, then try to extract from request
         effective_user_id = None
-        if current_user:
-            effective_user_id = current_user.get("id")
-        elif user_id:
+        if user_id:
             effective_user_id = user_id
         else:
             # Try to extract from request headers for backwards compatibility
