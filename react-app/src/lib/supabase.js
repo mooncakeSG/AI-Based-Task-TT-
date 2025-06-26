@@ -4,6 +4,13 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key'
 
+// Configuration check
+console.log('🔧 Supabase Configuration:', {
+  url: supabaseUrl,
+  hasValidKey: supabaseAnonKey && supabaseAnonKey !== 'your-anon-key',
+  keyLength: supabaseAnonKey?.length || 0
+})
+
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -22,23 +29,51 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export const auth = {
   // Sign up new user
   signUp: async (email, password, options = {}) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: options.metadata || {}
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: options.metadata || {}
+        }
+      })
+      
+      // Enhanced error handling
+      if (error) {
+        console.error('Supabase SignUp Error:', error)
+        if (error.status === 401) {
+          return { data: null, error: { message: 'Authentication service unavailable. Please check your Supabase configuration.' } }
+        }
       }
-    })
-    return { data, error }
+      
+      return { data, error }
+    } catch (err) {
+      console.error('Network/Configuration Error:', err)
+      return { data: null, error: { message: 'Unable to connect to authentication service. Please try again later.' } }
+    }
   },
 
   // Sign in user
   signIn: async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-    return { data, error }
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
+      
+      // Enhanced error handling
+      if (error) {
+        console.error('Supabase SignIn Error:', error)
+        if (error.status === 401) {
+          return { data: null, error: { message: 'Invalid credentials or authentication service unavailable.' } }
+        }
+      }
+      
+      return { data, error }
+    } catch (err) {
+      console.error('Network/Configuration Error:', err)
+      return { data: null, error: { message: 'Unable to connect to authentication service. Please try again later.' } }
+    }
   },
 
   // Sign out user
